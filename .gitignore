@@ -10,4 +10,5 @@ apps/web/android/local.properties
 *.apk
 *.aab
 *.tsbuildinfo
+.firebase/
 public-site/downloads/*.apk
