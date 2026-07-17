@@ -1,8 +1,10 @@
 import type { OliveDeviceTarget } from "@olive-remote-lab/olive-client";
 import { isNativeApp } from "./nativeApi";
+import { isDemoTarget } from "./demoOlive";
 
 export function artworkUrl(target: OliveDeviceTarget, value: string): string {
   if (!value) return "";
+  if (isDemoTarget(target) && value.startsWith("/demo-art/")) return value;
   let host = target.host;
   let port = target.port;
   let path = value;

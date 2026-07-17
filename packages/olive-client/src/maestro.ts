@@ -18,20 +18,36 @@ export interface MaestroTrackMetadata {
   artist: string;
   genre: string;
   artworkPath: string;
+  durationSeconds: number | null;
   playCount: number | null;
   rating: number | null;
   raw: Record<string, unknown>;
 }
 
+export interface NowPlayingSnapshot {
+  itemId: string;
+  metadata: MaestroTrackMetadata | null;
+  transportState: "playing" | "paused" | "stopped" | "unknown";
+  positionSeconds: number | null;
+  durationSeconds: number | null;
+  sampledAt: number;
+}
+
 function decodeXml(value: string): string {
-  return value
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&")
-    .replace(/&#(\d+);/g, (_match, code: string) => String.fromCodePoint(Number(code)))
-    .replace(/&#x([\da-f]+);/gi, (_match, code: string) => String.fromCodePoint(Number.parseInt(code, 16)));
+  let decoded = value;
+  for (let pass = 0; pass < 3; pass += 1) {
+    const next = decoded
+      .replace(/&amp;/gi, "&")
+      .replace(/&quot;/gi, '"')
+      .replace(/&apos;/gi, "'")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&#(\d+);/g, (_match, code: string) => String.fromCodePoint(Number(code)))
+      .replace(/&#x([\da-f]+);/gi, (_match, code: string) => String.fromCodePoint(Number.parseInt(code, 16)));
+    if (next === decoded) break;
+    decoded = next;
+  }
+  return decoded;
 }
 
 function attributes(input: string): Record<string, string> {
@@ -121,7 +137,7 @@ export function parseTrackMetadata(body: string): MaestroTrackMetadata | null {
   const root = parsed as Record<string, unknown>;
   const raw = root.track && typeof root.track === "object" ? root.track as Record<string, unknown> : root;
   const stringValue = (...keys: string[]): string => {
-    for (const key of keys) if (typeof raw[key] === "string") return raw[key] as string;
+    for (const key of keys) if (typeof raw[key] === "string") return decodeXml(raw[key] as string);
     return "";
   };
   const numericValue = (...keys: string[]): number | null => {
@@ -139,14 +155,69 @@ export function parseTrackMetadata(body: string): MaestroTrackMetadata | null {
     artist: stringValue("artist", "interpreter", "performer"),
     genre: stringValue("genre", "major_genre"),
     artworkPath: normalizeArtworkPath(stringValue("albumart", "albumArt", "artwork")),
+    durationSeconds: parseTimeSeconds(stringValue("duration", "trackDuration", "TrackDuration")),
     playCount: numericValue("playcount", "playCount"),
     rating: numericValue("myRating", "rating"),
     raw,
   };
 }
 
+export function parseTimeSeconds(value: unknown): number | null {
+  if (typeof value === "number") return Number.isFinite(value) && value >= 0 ? value : null;
+  if (typeof value !== "string" || !value.trim()) return null;
+  const trimmed = value.trim();
+  if (/^\d+(?:\.\d+)?$/.test(trimmed)) {
+    const numeric = Number(trimmed);
+    return Number.isFinite(numeric) ? numeric : null;
+  }
+  const parts = trimmed.split(":");
+  if (parts.length < 2 || parts.length > 3 || parts.some((part) => !/^\d+(?:\.\d+)?$/.test(part))) return null;
+  const values = parts.map(Number);
+  const seconds = parts.length === 3
+    ? (values[0] ?? 0) * 3600 + (values[1] ?? 0) * 60 + (values[2] ?? 0)
+    : (values[0] ?? 0) * 60 + (values[1] ?? 0);
+  return Number.isFinite(seconds) ? seconds : null;
+}
+
+export function parsePlaybackStatus(body: string): {
+  transportState: "playing" | "paused" | "stopped" | "unknown";
+  positionSeconds: number | null;
+  durationSeconds: number | null;
+} {
+  let parsed: unknown;
+  try { parsed = JSON.parse(body); } catch { return { transportState: "unknown", positionSeconds: null, durationSeconds: null }; }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { transportState: "unknown", positionSeconds: null, durationSeconds: null };
+  }
+  const root = parsed as Record<string, unknown>;
+  const media = root.playmediainfo && typeof root.playmediainfo === "object" && !Array.isArray(root.playmediainfo)
+    ? root.playmediainfo as Record<string, unknown>
+    : root;
+  const rawState = typeof media.TransportState === "string" ? media.TransportState
+    : typeof root.TransportState === "string" ? root.TransportState
+      : "";
+  const normalized = rawState.toUpperCase();
+  const transportState = normalized === "PLAYING" ? "playing"
+    : normalized === "PAUSED_PLAYBACK" || normalized === "PAUSED" ? "paused"
+      : normalized === "STOPPED" ? "stopped"
+        : "unknown";
+  const firstTime = (keys: string[]): number | null => {
+    for (const key of keys) {
+      const seconds = parseTimeSeconds(media[key] ?? root[key]);
+      if (seconds !== null) return seconds;
+    }
+    return null;
+  };
+  return {
+    transportState,
+    positionSeconds: firstTime(["RelativeTimePosition", "relativeTimePosition", "RelTime", "position"]),
+    durationSeconds: firstTime(["TrackDuration", "CurrentTrackDuration", "trackDuration", "duration"]),
+  };
+}
+
 function normalizeArtworkPath(value: string): string {
-  if (!/^https?:\/\//i.test(value)) return value;
+  if (!value || /artworknotfound\.gif(?:$|\?)/i.test(value)) return "";
+  if (!/^https?:\/\//i.test(value)) return value.startsWith("/") ? value : `/${value.replace(/^\.\//, "")}`;
   try {
     const url = new URL(value);
     return url.protocol === "http:" ? url.toString() : "";

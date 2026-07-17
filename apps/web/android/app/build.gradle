@@ -9,7 +9,7 @@ def hasReleaseSigning = ["storeFile", "storePassword", "keyAlias", "keyPassword"
     releaseSigningProperties.getProperty(it)
 }
 def appVersionCode = (System.getenv("OLIVE_VERSION_CODE") ?: "1").toInteger()
-def appVersionName = System.getenv("OLIVE_VERSION_NAME") ?: "0.1.0"
+def appVersionName = System.getenv("OLIVE_VERSION_NAME") ?: "1.0.0"
 def allowUnsignedRelease = project.hasProperty("allowUnsignedRelease")
 
 gradle.taskGraph.whenReady { graph ->

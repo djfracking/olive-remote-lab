@@ -23,7 +23,9 @@ function isLocalAddress(address: string): boolean {
 
 export async function assertLocalUrl(input: string): Promise<URL> {
   const url = new URL(input);
-  if (url.protocol !== "http:") throw new Error("Only local HTTP targets are allowed.");
+  if (url.protocol !== "http:" || url.username || url.password) {
+    throw new Error("Only credential-free local HTTP targets are allowed.");
+  }
   const hostname = url.hostname.replace(/^\[|\]$/g, "");
   if (isIP(hostname) === 6) {
     if (!hostname.startsWith("fe80:") && hostname !== "::1") throw new Error("Only local IPv6 targets are allowed.");

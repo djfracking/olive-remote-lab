@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Olive Remote Lab</string>
-    <string name="title_activity_main">Olive Remote Lab</string>
+    <string name="app_name">Olive Remote</string>
+    <string name="title_activity_main">Olive Remote</string>
     <string name="package_name">com.djfracking.oliveremotelab</string>
     <string name="custom_url_scheme">com.djfracking.oliveremotelab</string>
 </resources>

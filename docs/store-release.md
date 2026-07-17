@@ -20,14 +20,16 @@ The permanent bundle ID is `com.djfracking.oliveremotelab`; the deployment targe
 
 1. Open `apps/web/ios/App/App.xcworkspace` in Xcode.
 2. Select the owning Apple Developer team and register the bundle ID.
-3. Request Apple's Multicast Networking entitlement for this bundle ID. SSDP requires it; the entitlement is already declared in `App.entitlements`.
+3. Request Apple's Multicast Networking entitlement for this bundle ID. SSDP requires it; the requested capability is preserved in `App.entitlements` for a later release.
 4. Confirm automatic signing and provisioning on a physical iPhone and iPad.
 5. Run `npm run ios:archive`, validate the archive, and upload it to App Store Connect.
 6. Add the privacy details, product-page copy, screenshots, support URL, and review notes. Test through TestFlight before App Review.
 
-The first archive attempt on this Mac confirmed that the source and simulator build succeed, but Xcode's App Store account session must be refreshed before it can create the provisioning profile. This is an account credential step, not a source-code failure.
+The source, simulator build, signed physical-device build, version 1.0.0 iOS archive, and physical O4HD/iPad smoke test have succeeded on this Mac. The remaining iOS release gates are rebuilding the archive from the final committed source, creating the App Store Connect record, final screenshots and metadata, distribution export/upload, TestFlight testing, and App Review.
 
 Apple requires approval before an iOS app can use the multicast entitlement. See [Multicast Networking entitlement](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.networking.multicast), [TestFlight](https://developer.apple.com/testflight/), and [Submitting to the App Store](https://developer.apple.com/app-store/submitting/).
+
+Version 1.0 Debug builds use `AppDebug.entitlements` and App Store builds use `AppStore.entitlements`, both without the restricted multicast capability. Automatic discovery still works through the bounded private `/24` fallback when SSDP is unavailable. Once Apple approves multicast for this bundle ID, point the Release configuration back to `App.entitlements` to enable SSDP in the distributed app.
 
 ## Store declarations
 
@@ -37,13 +39,14 @@ Apple requires approval before an iOS app can use the multicast entitlement. See
 - The app must explain local-network access as necessary to find and control the user's own music server.
 
 Draft listing copy, keywords, review notes, and privacy answers are in [store-listing-draft.md](store-listing-draft.md).
+The exact offline review path is also captured in [app-review.md](app-review.md).
 
 ## Physical release gate
 
 Do not move from beta testing to public release until all of the following pass on real devices:
 
 - Discovery and manual connection on iPhone, iPad, Android phone, and Android tablet.
-- Browse, search, artwork, play, pause, stop, previous, next, queue, and now-playing state against an O4HD.
+- Browse, search, artwork, play, pause, stop, previous, next, multi-server switching, and now-playing state against an O4HD.
 - Offline, sleep, reboot, IP-change, timeout, and interrupted-Wi-Fi recovery.
 - Diagnostic export redaction.
 - At least one additional Olive model capture before claiming support for that model.

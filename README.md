@@ -1,4 +1,4 @@
-# Olive Remote Lab
+# Olive Remote
 
 A browser-first, local-network controller and protocol explorer for the complete known Olive music-server family. The O4HD is the first physically verified model; every other model is represented by an evidence-gated profile so the app does not guess across firmware generations.
 
@@ -27,7 +27,10 @@ Other useful commands:
 npm test
 npm run typecheck
 npm run build
+npm run verify
 ```
+
+`npm run verify` is the release-candidate check: strict TypeScript, unit tests, and every production web/Node build. Pull requests and updates to `release` run the same check in GitHub Actions, plus unsigned Android and iOS Simulator builds.
 
 ## Android app
 
@@ -107,6 +110,8 @@ The public website is hosted by Firebase Hosting and necessarily receives ordina
 The first real-device findings are documented in [docs/olive-4hd-protocol-map.md](docs/olive-4hd-protocol-map.md). The family registry and capture checklist are in [docs/model-compatibility.md](docs/model-compatibility.md), and remaining protocol evidence is tracked in [docs/protocol-evidence.md](docs/protocol-evidence.md).
 
 The simple remote, local import workflow, and optional Apple Music/Spotify boundary are described in [docs/product-direction.md](docs/product-direction.md).
+
+The one-time paid-download model and US $14.99 launch price are documented in [docs/business-model.md](docs/business-model.md).
 
 The complete customer journey, next-tier roadmap and non-negotiable platform boundaries are listed in [docs/customer-journey.md](docs/customer-journey.md).
 

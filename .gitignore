@@ -7,6 +7,16 @@ dist/
 coverage/
 .android-sdk/
 apps/web/android/local.properties
+apps/web/android/.gradle/
+apps/web/android/app/build/
+apps/web/android/build/
+apps/web/android/signing.properties
+apps/web/ios/DerivedData/
+apps/web/ios/DeviceBuild/
+apps/web/ios/SourcePackages/
+apps/web/ios/output/
+apps/web/ios/**/xcuserdata/
+apps/web/ios/**/*.xcuserstate
 *.apk
 *.aab
 *.tsbuildinfo

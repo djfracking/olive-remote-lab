@@ -62,3 +62,5 @@ export type PlaybackCommand =
   | { action: "pause" | "stop" | "previous" | "next" };
 
 export type LibrarySearchScope = "albums" | "artists" | "genres" | "tracks" | "playlists";
+
+export type PlaybackTransportState = "playing" | "paused" | "stopped" | "unknown";

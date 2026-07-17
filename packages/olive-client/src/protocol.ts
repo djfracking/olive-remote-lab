@@ -107,9 +107,9 @@ export const OLIVE_4HD_OBSERVED_SURFACES = [
     family: "maestro",
     method: "POST",
     path: "/server/player.php",
-    evidence: "static-reference",
+    evidence: "verified-response",
     risk: "playback",
-    notes: "Referenced with mode, id and optional index. Not invoked during discovery.",
+    notes: "Original Maestro playback route verified on an O4HD with mode=play, an item id and optional index. Never invoked during discovery.",
   },
   {
     id: "maestro.delete-item",

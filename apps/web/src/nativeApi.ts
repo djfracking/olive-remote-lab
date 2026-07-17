@@ -12,6 +12,7 @@ import {
   type TransportRequest,
   type TransportResponse,
 } from "@olive-remote-lab/olive-client";
+import { handleDemoApi } from "./demoOlive";
 
 interface SsdpReply {
   address: string;
@@ -26,6 +27,15 @@ interface OpenHost { address: string; ports: number[] }
 interface DiscoveryPlugin {
   discover(options: { timeoutMs: number }): Promise<{ localAddress: string; responses: SsdpReply[] }>;
   scanSubnet(options: { timeoutMs: number; concurrency: number }): Promise<{ subnet: string; hosts: OpenHost[] }>;
+  networkStatus(): Promise<LocalNetworkStatus>;
+  openNetworkSettings(): Promise<void>;
+}
+
+export interface LocalNetworkStatus {
+  localAddress: string;
+  wifi: boolean;
+  vpnActive: boolean;
+  settingsLabel: string;
 }
 
 interface NativeCandidate {
@@ -56,6 +66,18 @@ export const isNativeApp = Capacitor.isNativePlatform() && ["android", "ios"].in
 const OliveDiscovery = isNativeApp ? registerPlugin<DiscoveryPlugin>("OliveDiscovery") : null;
 const nativeLogs: NativeLogEntry[] = [];
 
+export async function getLocalNetworkStatus(): Promise<LocalNetworkStatus | null> {
+  if (!OliveDiscovery) return null;
+  try { return await OliveDiscovery.networkStatus(); }
+  catch { return { localAddress: "", wifi: false, vpnActive: false, settingsLabel: "Open Settings" }; }
+}
+
+export async function openLocalNetworkSettings(): Promise<boolean> {
+  if (!OliveDiscovery) return false;
+  try { await OliveDiscovery.openNetworkSettings(); return true; }
+  catch { return false; }
+}
+
 function assertPrivateHost(host: string): void {
   const normalized = host.trim().toLowerCase();
   const privateIpv4 = /^(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|169\.254\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})$/;
@@ -72,16 +94,9 @@ function assertPrivateUrl(value: string): URL {
 }
 
 class NativeHttpTransport implements OliveTransport {
-  private tail: Promise<void> = Promise.resolve();
-
   public async request(request: TransportRequest): Promise<TransportResponse> {
     assertPrivateUrl(request.url);
-    let release: (() => void) | undefined;
-    const previous = this.tail;
-    this.tail = new Promise<void>((resolve) => { release = resolve; });
-    await previous;
-    try { return await this.perform(request); }
-    finally { release?.(); }
+    return this.perform(request);
   }
 
   private async perform(request: TransportRequest): Promise<TransportResponse> {
@@ -195,18 +210,25 @@ async function inspectOpenHost(host: OpenHost): Promise<NativeCandidate | null> 
 
 async function discoverNative(): Promise<{ candidates: NativeCandidate[]; subnet?: string; ssdpResponses: number }> {
   if (!OliveDiscovery) throw new Error("Native discovery is available only in the Android or iOS app.");
-  const ssdp = await OliveDiscovery.discover({ timeoutMs: 1_800 });
-  const uniqueReplies = [...new Map(ssdp.responses.map((reply) => [reply.address, reply])).values()];
-  const inspected = await Promise.all(uniqueReplies.map(inspectSsdp));
-  const candidates = inspected.filter((value): value is NativeCandidate => value !== null);
-  if (candidates.length) return { candidates, ssdpResponses: ssdp.responses.length };
+  let ssdpResponses = 0;
+  try {
+    const ssdp = await OliveDiscovery.discover({ timeoutMs: 1_800 });
+    ssdpResponses = ssdp.responses.length;
+    const uniqueReplies = [...new Map(ssdp.responses.map((reply) => [reply.address, reply])).values()];
+    const inspected = await Promise.all(uniqueReplies.map(inspectSsdp));
+    const candidates = inspected.filter((value): value is NativeCandidate => value !== null);
+    if (candidates.length) return { candidates, ssdpResponses };
+  } catch {
+    // Debug provisioning may not include Apple's restricted multicast entitlement.
+    // Continue to the bounded current-subnet scan instead of failing discovery.
+  }
 
   const scan = await OliveDiscovery.scanSubnet({ timeoutMs: 250, concurrency: 16 });
   const scanned = await Promise.all(scan.hosts.map(inspectOpenHost));
   return {
     candidates: scanned.filter((value): value is NativeCandidate => value !== null),
     subnet: scan.subnet,
-    ssdpResponses: ssdp.responses.length,
+    ssdpResponses,
   };
 }
 
@@ -224,6 +246,10 @@ async function handleNativeRoute(path: string, init?: RequestInit): Promise<unkn
     case "/api/library/browse": {
       const input = body as { target: OliveDeviceTarget; browse: MaestroBrowseRequest };
       return nativeClient.browseLibrary(input.target, input.browse);
+    }
+    case "/api/library/item-metadata": {
+      const input = body as { target: OliveDeviceTarget; itemId: string };
+      return nativeClient.getItemMetadata(input.target, input.itemId);
     }
     case "/api/now-playing": return nativeClient.getNowPlaying(body as OliveDeviceTarget);
     case "/api/playback": {
@@ -249,8 +275,17 @@ async function handleNativeRoute(path: string, init?: RequestInit): Promise<unkn
 
 export async function appFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const value = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-  if (!isNativeApp || !value.startsWith("/api/")) return fetch(input, init);
   const path = value.split("?")[0] ?? value;
+  if (path.startsWith("/api/")) {
+    try {
+      const demo = handleDemoApi(path, parseBody(init));
+      if (demo.handled) return new Response(JSON.stringify(demo.value), { status: 200, headers: { "content-type": "application/json" } });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Demo request failed.";
+      return new Response(JSON.stringify({ error: message }), { status: 502, headers: { "content-type": "application/json" } });
+    }
+  }
+  if (!isNativeApp || !value.startsWith("/api/")) return fetch(input, init);
   const started = performance.now();
   try {
     const data = await handleNativeRoute(path, init);

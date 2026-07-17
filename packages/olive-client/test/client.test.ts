@@ -20,7 +20,7 @@ describe("Olive compatibility client", () => {
     expect(urls.map((url) => new URL(url).port || "80")).toEqual(["80", "8163", "8163"]);
   });
 
-  it("uses the device-native controlPlayer request with the original one-based menu index", async () => {
+  it("uses the original Maestro player request with its one-based menu index", async () => {
     let requestUrl = "";
     const transport: OliveTransport = { request: async (request) => {
       requestUrl = request.url; return response(request, "");
@@ -28,9 +28,9 @@ describe("Olive compatibility client", () => {
     const client = new OliveCompatibilityClient(transport);
     await client.controlPlayback({ host: "192.168.1.8", port: 80 }, { action: "play", itemId: "track-7", index: 65 });
     const url = new URL(requestUrl);
-    expect(url.pathname).toBe("/includes/ajax/a_executeOperation.php");
+    expect(url.pathname).toBe("/server/player.php");
     expect(Object.fromEntries(url.searchParams)).toMatchObject({
-      action: "controlPlayer", root: "playItem", upnpid: "track-7", sortCrit: "+upnp:originalTrackNumber", index: "65",
+      mode: "play", id: "track-7", index: "65",
     });
   });
 

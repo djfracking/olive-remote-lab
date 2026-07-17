@@ -1,7 +1,12 @@
 package com.djfracking.oliveremotelab;
 
 import android.content.Context;
+import android.content.Intent;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.net.wifi.WifiManager;
+import android.provider.Settings;
 
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -35,6 +40,31 @@ public class OliveDiscoveryPlugin extends Plugin {
     private static final String SSDP_HOST = "239.255.255.250";
     private static final int SSDP_PORT = 1900;
     private static final int[] ALLOWED_PORTS = new int[]{80, 8163};
+
+    @PluginMethod
+    public void networkStatus(PluginCall call) {
+        ConnectivityManager manager = (ConnectivityManager) getContext().getSystemService(Context.CONNECTIVITY_SERVICE);
+        Network active = manager == null ? null : manager.getActiveNetwork();
+        NetworkCapabilities capabilities = active == null || manager == null ? null : manager.getNetworkCapabilities(active);
+        JSObject result = new JSObject();
+        result.put("localAddress", activePrivateIpv4());
+        result.put("wifi", capabilities != null && capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI));
+        result.put("vpnActive", capabilities != null && capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN));
+        result.put("settingsLabel", "Open Wi-Fi Settings");
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void openNetworkSettings(PluginCall call) {
+        try {
+            Intent intent = new Intent(Settings.ACTION_WIFI_SETTINGS);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            call.resolve();
+        } catch (Exception error) {
+            call.reject("Could not open Wi-Fi settings", error);
+        }
+    }
 
     @PluginMethod
     public void discover(PluginCall call) {

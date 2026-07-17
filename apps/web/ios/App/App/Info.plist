@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>Olive Remote Lab</string>
+        <string>Olive Remote</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -25,7 +25,7 @@
 	<key>NSAppTransportSecurity</key>
 	<dict><key>NSAllowsLocalNetworking</key><true/></dict>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Olive Remote Lab finds and controls your music server on your local network.</string>
+	<string>Olive Remote finds and controls your music server on your local network.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

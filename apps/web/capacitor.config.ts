@@ -2,7 +2,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
   appId: "com.djfracking.oliveremotelab",
-  appName: "Olive Remote Lab",
+  appName: "Olive Remote",
   webDir: "dist",
   android: {
     allowMixedContent: true,

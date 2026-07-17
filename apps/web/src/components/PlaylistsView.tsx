@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { MaestroTree, MaestroTreeNode, OliveDeviceTarget } from "@olive-remote-lab/olive-client";
 import { appFetch } from "../nativeApi";
+import { LibraryArtwork } from "./LibraryArtwork";
+import { announceTrackStarting } from "../playbackEvents";
+import { readDeviceCache, writeDeviceCache } from "../deviceCache";
 
 interface Props { connected: boolean; target: OliveDeviceTarget; onStatus: (status: string) => void }
 
@@ -23,8 +26,12 @@ export function PlaylistsView({ connected, target, onStatus }: Props) {
   async function loadPlaylists() {
     if (!connected) return;
     setLoading(true); setError(""); setTracks(null); setActive(null);
+    const resource = "library:playlists";
+    const cached = await readDeviceCache<MaestroTree>(target, resource);
+    if (cached) { setPlaylists(cached); setLoading(false); }
     try {
       const result = await post<MaestroTree>("/api/library/browse", { target, browse: { id: "playlists", type: "playlist" } });
+      void writeDeviceCache(target, resource, result);
       setPlaylists(result); onStatus(`${result.items.length} playlists loaded`);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Playlists unavailable."); }
     finally { setLoading(false); }
@@ -38,8 +45,12 @@ export function PlaylistsView({ connected, target, onStatus }: Props) {
 
   async function openPlaylist(item: MaestroTreeNode) {
     setLoading(true); setError("");
+    const resource = `library:playlist:${item.id}`;
+    const cached = await readDeviceCache<MaestroTree>(target, resource);
+    if (cached) { setActive(item); setTracks(cached); setLoading(false); }
     try {
       const result = await post<MaestroTree>("/api/library/browse", { target, browse: { id: item.id, type: "playlist", startIndex: 0, index: 0 } });
+      void writeDeviceCache(target, resource, result);
       setActive(item); setTracks(result); onStatus(`${item.title}: ${result.items.length} items loaded`);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not open playlist."); }
     finally { setLoading(false); }
@@ -49,6 +60,7 @@ export function PlaylistsView({ connected, target, onStatus }: Props) {
     setPlayingId(item.id); setError("");
     try {
       const playbackIndex = item.userData.playbackIndex ? Number(item.userData.playbackIndex) : undefined;
+      announceTrackStarting(item);
       await post("/api/playback", { target, command: { action: "play", itemId: item.id, ...(playbackIndex !== undefined ? { index: playbackIndex } : {}) } });
       onStatus(`Playing ${item.title}`);
       window.dispatchEvent(new Event("olive-playback-changed"));
@@ -56,12 +68,12 @@ export function PlaylistsView({ connected, target, onStatus }: Props) {
     finally { setPlayingId(""); }
   }
 
-  if (!connected) return <section className="card module-empty"><h2>Connect a server</h2><p>Choose a local device before reading playlists.</p></section>;
+  if (!connected) return <section className="card module-empty"><h2>Olive not connected</h2><p>Open Settings to connect your Olive.</p></section>;
   const items = tracks?.items ?? playlists?.items ?? [];
 
   return <section className="module-stack">
-    <div className="card module-toolbar"><div><span className="step">READ ONLY</span><div><h2>{active?.title ?? "Playlists"}</h2><p>Playlist editing stays locked until its write contract is verified.</p></div></div><div className="toolbar-actions">{active && <button className="secondary" onClick={() => { setActive(null); setTracks(null); }}>Back</button>}<button className="secondary" onClick={() => void loadPlaylists()} disabled={loading}>Refresh</button></div></div>
+    <div className="content-toolbar">{active ? <h2>{active.title}</h2> : <span />}<div className="toolbar-actions">{active && <button className="secondary" onClick={() => { setActive(null); setTracks(null); }}>Back</button>}<button className="secondary" onClick={() => void loadPlaylists()} disabled={loading}>Refresh</button></div></div>
     {error && <div className="error-box">{error}</div>}
-    <div className="card library-panel">{loading ? <div className="module-loading"><span className="spinner" />Reading playlists…</div> : items.length ? <div className="library-grid">{items.map((item) => <button key={item.id} onClick={() => active ? void play(item) : void openPlaylist(item)}><span className="library-icon">{active ? "▶" : "≡"}</span><span><strong>{item.title || "Untitled"}</strong><small>{active ? (playingId === item.id ? "Starting…" : "Play track") : `${item.childCount || ""} playlist items`}</small></span><i>›</i></button>)}</div> : <div className="empty">No playlists were returned by this server.</div>}</div>
+    <div className="card library-panel">{loading ? <div className="module-loading"><span className="spinner" />Loading…</div> : items.length ? <div className="library-grid">{items.map((item) => <button key={item.id} onClick={() => active ? void play(item) : void openPlaylist(item)}><LibraryArtwork target={target} item={item} fallback={active ? "▶" : "≡"} /><span><strong>{item.title || "Untitled"}</strong>{active ? playingId === item.id && <small>Starting…</small> : (item.childCount ?? 0) > 0 && <small>{item.childCount} tracks</small>}</span><i>›</i></button>)}</div> : <div className="empty">No playlists found.</div>}</div>
   </section>;
 }

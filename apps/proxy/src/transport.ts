@@ -2,16 +2,9 @@ import type { OliveTransport, TransportRequest, TransportResponse } from "@olive
 import { assertLocalUrl } from "./security.js";
 
 export class LocalHttpTransport implements OliveTransport {
-  private requestTail: Promise<void> = Promise.resolve();
-
   public async request(request: TransportRequest): Promise<TransportResponse> {
     await assertLocalUrl(request.url);
-    let release: (() => void) | undefined;
-    const previous = this.requestTail;
-    this.requestTail = new Promise<void>((resolve) => { release = resolve; });
-    await previous;
-    try { return await this.performRequest(request); }
-    finally { release?.(); }
+    return this.performRequest(request);
   }
 
   private async performRequest(request: TransportRequest): Promise<TransportResponse> {

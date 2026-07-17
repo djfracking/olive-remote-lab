@@ -63,9 +63,37 @@ public class OliveDiscoveryPlugin: CAPPlugin, CAPBridgedPlugin {
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "discover", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "scanSubnet", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "networkStatus", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "openNetworkSettings", returnType: CAPPluginReturnPromise),
     ]
     private let worker = DispatchQueue(label: "com.djfracking.oliveremotelab.discovery", qos: .userInitiated)
     private static let allowedPorts = [80, 8163]
+
+    @objc func networkStatus(_ call: CAPPluginCall) {
+        let interfaces = Self.activeInterfaceNames()
+        call.resolve([
+            "localAddress": Self.activePrivateIPv4() ?? "",
+            "wifi": interfaces.contains("en0"),
+            "vpnActive": interfaces.contains { $0.hasPrefix("utun") || $0.hasPrefix("ppp") || $0.hasPrefix("ipsec") },
+            "settingsLabel": "Open App Settings",
+        ])
+    }
+
+    @objc func openNetworkSettings(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            guard let url = URL(string: UIApplication.openSettingsURLString), UIApplication.shared.canOpenURL(url) else {
+                call.reject("Could not open app settings")
+                return
+            }
+            UIApplication.shared.open(url, options: [:]) { opened in
+                if opened {
+                    call.resolve()
+                } else {
+                    call.reject("Could not open app settings")
+                }
+            }
+        }
+    }
 
     @objc func discover(_ call: CAPPluginCall) {
         let timeoutMs = Self.clamp(call.getInt("timeoutMs") ?? 1800, minimum: 500, maximum: 4000)
@@ -205,6 +233,22 @@ public class OliveDiscoveryPlugin: CAPPlugin, CAPBridgedPlugin {
             current = value.ifa_next
         }
         return candidates.sorted { $0.0 > $1.0 }.first?.1
+    }
+
+    private static func activeInterfaceNames() -> [String] {
+        var interfaces: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&interfaces) == 0, let first = interfaces else { return [] }
+        defer { freeifaddrs(interfaces) }
+        var names = Set<String>()
+        var current: UnsafeMutablePointer<ifaddrs>? = first
+        while let interface = current {
+            let value = interface.pointee
+            if (value.ifa_flags & UInt32(IFF_UP)) != 0, (value.ifa_flags & UInt32(IFF_LOOPBACK)) == 0 {
+                names.insert(String(cString: value.ifa_name))
+            }
+            current = value.ifa_next
+        }
+        return Array(names)
     }
 
     private static func ipv4String(_ address: in_addr) -> String {

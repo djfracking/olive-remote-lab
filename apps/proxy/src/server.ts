@@ -40,7 +40,7 @@ app.get("/api/artwork", async (request, response) => {
     const bytes = await upstream.arrayBuffer();
     if (bytes.byteLength > 8 * 1024 * 1024) { response.status(413).end(); return; }
     response.setHeader("content-type", contentType);
-    response.setHeader("cache-control", "private, max-age=300");
+    response.setHeader("cache-control", "private, max-age=604800, stale-while-revalidate=86400");
     response.send(Buffer.from(bytes));
   } catch { response.status(404).end(); }
 });
@@ -86,6 +86,17 @@ app.post("/api/library/browse", async (request, response) => {
     response.json(tree);
   } catch (error) {
     response.status(502).json({ error: error instanceof Error ? error.message : "Library browse failed." });
+  }
+});
+
+app.post("/api/library/item-metadata", async (request, response) => {
+  const { target, itemId } = request.body as { target: OliveDeviceTarget; itemId: string };
+  try {
+    const metadata = await client.getItemMetadata(target, itemId);
+    addLog({ method: "GET", url: `${target.host}:${target.port}/server/getnewinfo.php`, status: 200, responsePreview: metadata?.artworkPath ? "Artwork metadata available; private fields omitted" : "No artwork metadata returned" });
+    response.json(metadata);
+  } catch (error) {
+    response.status(502).json({ error: error instanceof Error ? error.message : "Item metadata failed." });
   }
 });
 

@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" role="img" aria-label="Abstract night road artwork">
+  <defs><radialGradient id="c" cx="75%" cy="15%"><stop stop-color="#694f91"/><stop offset="1" stop-color="#101119"/></radialGradient></defs>
+  <rect width="600" height="600" fill="url(#c)"/><g fill="#d6e4bc"><circle cx="90" cy="88" r="4"/><circle cx="188" cy="137" r="6"/><circle cx="338" cy="78" r="3"/><circle cx="512" cy="156" r="5"/></g><path d="M235 600 314 250l47 350Z" fill="#252a32"/><path d="m295 600 27-350 10 350Z" fill="#b7dc71" opacity=".85"/><path d="M0 445 185 342l62 258H0Zm600 0L414 342l-61 258h247Z" fill="#171c1b"/>
+</svg>

@@ -4,9 +4,11 @@ import {
   parseCurrentPlayingId,
   parseMaestroTrackList,
   parseMaestroTree,
+  parsePlaybackStatus,
   parseTrackMetadata,
   type MaestroTrackMetadata,
   type MaestroTree,
+  type NowPlayingSnapshot,
 } from "./maestro.js";
 import type {
   EndpointProbe,
@@ -23,6 +25,7 @@ import type {
 export class OliveCompatibilityClient {
   private readonly preferredPorts = new Map<string, number>();
   private readonly currentItemIds = new Map<string, string>();
+  private readonly metadataCache = new Map<string, MaestroTrackMetadata>();
 
   public constructor(private readonly transport: OliveTransport) {}
 
@@ -98,33 +101,53 @@ export class OliveCompatibilityClient {
     return parseMaestroTree(response.body);
   }
 
-  public async getNowPlaying(target: OliveDeviceTarget): Promise<{ itemId: string; metadata: MaestroTrackMetadata | null }> {
-    const current = await this.maestroPost(target, "/server/getcurrentplaying.php");
-    let itemId = parseCurrentPlayingId(current.body) ?? "";
-    if (!itemId) {
-      const status = await this.requestWithPortFallback(target, (candidate) => ({
+  public async getNowPlaying(target: OliveDeviceTarget): Promise<NowPlayingSnapshot> {
+    const [currentResult, statusResult] = await Promise.allSettled([
+      this.maestroPost(target, "/server/getcurrentplaying.php", {}, 900),
+      this.requestWithPortFallback(target, (candidate) => ({
         method: "GET",
         url: buildOliveUrl(candidate, "/includes/ajax/a_executeOperation.php", {
           action: "getBottomStatus", varAlarm: "alarmEnable", varTimer: "Idle30",
         }),
-        timeoutMs: 5_000,
-      }), "front");
-      let transportState = "";
-      try {
-        const parsed = JSON.parse(status.body) as { TransportState?: unknown };
-        if (typeof parsed.TransportState === "string") transportState = parsed.TransportState;
-      } catch { /* Some firmware returns only the legacy status callback. */ }
-      if (transportState === "PLAYING" || transportState === "PAUSED_PLAYBACK") {
-        itemId = this.currentItemIds.get(target.host) ?? "";
-      } else {
-        this.currentItemIds.delete(target.host);
-      }
+        timeoutMs: 800,
+      }), "front"),
+    ]);
+    const targetKey = `${target.host}:${target.port}`;
+    let itemId = currentResult.status === "fulfilled" ? parseCurrentPlayingId(currentResult.value.body) ?? "" : "";
+    const playback = statusResult.status === "fulfilled"
+      ? parsePlaybackStatus(statusResult.value.body)
+      : { transportState: "unknown" as const, positionSeconds: null, durationSeconds: null };
+    if (!itemId && (playback.transportState === "playing" || playback.transportState === "paused")) {
+      itemId = this.currentItemIds.get(targetKey) ?? "";
     }
-    if (!itemId) return { itemId: "", metadata: null };
+    if (playback.transportState === "stopped") {
+      this.currentItemIds.delete(targetKey);
+      itemId = "";
+    }
+    if (!itemId) return { itemId: "", metadata: null, ...playback, sampledAt: Date.now() };
+    this.currentItemIds.set(targetKey, itemId);
+    const metadata = await this.getItemMetadata(target, itemId, 1_500);
+    return {
+      itemId,
+      metadata,
+      transportState: playback.transportState,
+      positionSeconds: playback.positionSeconds,
+      durationSeconds: playback.durationSeconds ?? metadata?.durationSeconds ?? null,
+      sampledAt: Date.now(),
+    };
+  }
+
+  public async getItemMetadata(target: OliveDeviceTarget, itemId: string, timeoutMs = 5_000): Promise<MaestroTrackMetadata | null> {
+    if (!itemId.trim()) throw new Error("A library item ID is required.");
+    const cacheKey = `${target.host}:${target.port}:${itemId}`;
+    const cached = this.metadataCache.get(cacheKey);
+    if (cached) return cached;
     const details = await this.requestWithPortFallback(target, (candidate) => ({
-      method: "GET", url: buildOliveUrl(candidate, "/server/getnewinfo.php", { id: itemId }), timeoutMs: 5_000,
+      method: "GET", url: buildOliveUrl(candidate, "/server/getnewinfo.php", { id: itemId }), timeoutMs,
     }), "maestro");
-    return { itemId, metadata: parseTrackMetadata(details.body) };
+    const metadata = parseTrackMetadata(details.body);
+    if (metadata) this.metadataCache.set(cacheKey, metadata);
+    return metadata;
   }
 
   public async searchLibrary(target: OliveDeviceTarget, term: string, scope: LibrarySearchScope): Promise<MaestroTree> {
@@ -147,21 +170,20 @@ export class OliveCompatibilityClient {
     let response: TransportResponse;
     if (command.action === "play") {
       if (!command.itemId.trim()) throw new Error("A playable item ID is required.");
-      const query: Record<string, string> = {
-        action: "controlPlayer",
-        root: "playItem",
-        upnpid: command.itemId,
-        sortCrit: "+upnp:originalTrackNumber",
-      };
+      const query: Record<string, string> = { mode: "play", id: command.itemId };
       if (command.index !== undefined) {
         if (!Number.isInteger(command.index) || command.index < 0) throw new Error("Playback index must be a non-negative integer.");
         query.index = String(command.index);
-      } else query.index = "0";
+      }
       response = await this.requestWithPortFallback(target, (candidate) => ({
-        method: "GET", url: buildOliveUrl(candidate, "/includes/ajax/a_executeOperation.php", query), timeoutMs: 8_000,
-      }), "front");
+        method: "POST",
+        url: buildOliveUrl(candidate, "/server/player.php", query),
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: "",
+        timeoutMs: 8_000,
+      }), "maestro");
       if (response.status < 200 || response.status >= 400) throw new Error(`Playback command failed (${response.status}).`);
-      this.currentItemIds.set(target.host, command.itemId);
+      this.currentItemIds.set(`${target.host}:${target.port}`, command.itemId);
     } else {
       const action = command.action === "stop" || command.action === "pause" ? "controlPlayer"
         : command.action === "previous" ? "left_skip" : "right_skip";
@@ -174,7 +196,7 @@ export class OliveCompatibilityClient {
         method: "GET", url: buildOliveUrl(candidate, "/includes/ajax/a_executeOperation.php", query), timeoutMs: 5_000,
       }), "front");
       if (response.status < 200 || response.status >= 400) throw new Error(`Playback command failed (${response.status}).`);
-      if (command.action === "stop") this.currentItemIds.delete(target.host);
+      if (command.action === "stop") this.currentItemIds.delete(`${target.host}:${target.port}`);
     }
     return { status: response.status, durationMs: response.durationMs };
   }
@@ -183,13 +205,14 @@ export class OliveCompatibilityClient {
     target: OliveDeviceTarget,
     path: string,
     query: Record<string, string> = {},
+    timeoutMs = 8_000,
   ): Promise<TransportResponse> {
     const response = await this.requestWithPortFallback(target, (candidate) => ({
       method: "POST",
       url: buildOliveUrl(candidate, path, query),
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: "",
-      timeoutMs: 8_000,
+      timeoutMs,
     }), "maestro");
     if (response.status < 200 || response.status >= 400) {
       throw new Error(`Maestro request failed (${response.status} ${response.statusText}).`);

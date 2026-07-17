@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -15,6 +16,7 @@
   "devDependencies": {
     "@types/express": "^5.0.0",
     "@types/node": "^22.10.10",
-    "tsx": "^4.19.2"
+    "tsx": "^4.19.2",
+    "vitest": "^3.0.5"
   }
 }

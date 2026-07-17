@@ -2,7 +2,7 @@
 
 ## Shared identity
 
-- Name: Olive Remote Lab
+- Name: Olive Remote
 - Category: Music
 - Support URL: https://olive-remote-lab.web.app
 - Privacy URL: https://olive-remote-lab.web.app/privacy
@@ -14,7 +14,7 @@ Private local-network remote for legacy music servers.
 
 ## Full description
 
-Olive Remote Lab reconnects modern phones and tablets with compatible legacy music servers on the same local network.
+Olive Remote reconnects modern phones and tablets with compatible legacy music servers on the same local network.
 
 Find a server automatically, connect manually when needed, browse the available library interface, inspect now-playing information, and control verified playback functions. The built-in protocol tools can test known web surfaces and export redacted diagnostics when a firmware version needs investigation.
 
@@ -22,7 +22,7 @@ Privacy is part of the architecture. There is no account, advertising, analytics
 
 Compatibility is evidence-gated. The O4HD is the first physically exercised model. Other model profiles remain clearly marked until their firmware behavior is safely observed.
 
-Olive Remote Lab is an independent compatibility project. It does not use vendor logos and is not affiliated with or endorsed by the original hardware manufacturer.
+Olive Remote is an independent compatibility project. It does not use vendor logos and is not affiliated with or endorsed by the original hardware manufacturer.
 
 ## Keywords
 
@@ -30,7 +30,16 @@ music server, local network, remote control, UPnP, SSDP, music library, legacy a
 
 ## Review notes
 
-The app controls user-owned hardware on the same private Wi-Fi or Ethernet network. It intentionally has no cloud login or public demo server. Manual connection, settings, compatibility information, diagnostics, and offline behavior can be reviewed without hardware. Live discovery, library metadata, and playback require a compatible server on the review device's LAN.
+The app controls user-owned hardware on the same private Wi-Fi or Ethernet network. It intentionally has no cloud login or public demo server. A clearly labeled offline Demo Olive is bundled for review and uses only fictional metadata.
+
+Review path:
+
+1. Launch the app. The Find My Olive screen appears on a clean installation.
+2. Tap **Explore Demo Olive**. Do not tap Find My Olive; no Local Network permission is required for the demo.
+3. Review Now Playing, Library, Search, Playlists, artwork, live progress, play/pause, previous, next, stop, responsive tablet navigation, Settings, and the Add Music explanation.
+4. A persistent Demo Mode banner explains that playback and music are simulated locally. Tap **Connect a real Olive** to return to physical-device setup.
+
+The demo never sends a network request and contains no copyrighted recordings. Live discovery and control require compatible owner-supplied hardware on the review device's LAN. A physical O4HD and iPad were used for the release smoke test.
 
 The app requests local-network access because it sends SSDP discovery packets and local HTTP requests only to private-network devices. Conservative fallback discovery checks only the current private IPv4 `/24`, ports 80 and 8163, and the three known paths `/`, `/maestro.php`, and `/index.php`.
 
@@ -38,7 +47,15 @@ The app requests local-network access because it sends SSDP discovery packets an
 
 - `store-assets/ios/iphone-16-plus-now-playing.jpg` — native iPhone 16 Plus simulator capture after safe-area validation.
 
-Additional tablet, Android phone, library, discovery, and playback screenshots should be captured from physical release candidates before submission.
+Additional iPad and Android phone/tablet screenshots can be prepared with simulators and emulators. Final screenshots and listing claims must be checked against a physical release candidate before submission.
+
+## Commercial terms
+
+- Distribution model: one-time paid download.
+- US launch price: $14.99 using the nearest available store price point.
+- In-app purchases: none.
+- Subscriptions: none.
+- Advertising: none.
 
 ## Privacy answers
 

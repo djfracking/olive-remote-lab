@@ -1,6 +1,6 @@
 # Olive model compatibility strategy
 
-Olive Remote Lab targets the complete known Olive music-server/player family, but compatibility is recorded per model and firmware rather than inferred from branding.
+Olive Remote targets the complete known Olive music-server/player family, but compatibility is recorded per model and firmware rather than inferred from branding.
 
 ## Registry
 

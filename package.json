@@ -9,9 +9,10 @@
   ],
   "scripts": {
     "dev": "npm run build -w @olive-remote-lab/olive-client && concurrently -k -n proxy,web -c magenta,cyan \"npm run dev -w @olive-remote-lab/proxy\" \"npm run dev -w @olive-remote-lab/web\"",
-    "test": "npm run test -w @olive-remote-lab/olive-client",
+    "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "build": "npm run build -w @olive-remote-lab/olive-client && npm run build -w @olive-remote-lab/proxy && npm run build -w @olive-remote-lab/web",
+    "verify": "npm run typecheck && npm test && npm run build",
     "android:debug": "npm run build -w @olive-remote-lab/olive-client && npm run android:debug -w @olive-remote-lab/web",
     "android:bundle:unsigned": "npm run build -w @olive-remote-lab/olive-client && npm run android:bundle:unsigned -w @olive-remote-lab/web",
     "android:release": "npm run build -w @olive-remote-lab/olive-client && npm run android:release -w @olive-remote-lab/web",

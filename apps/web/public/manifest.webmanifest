@@ -1,7 +1,7 @@
 {
-  "name": "Olive Remote Lab",
-  "short_name": "Remote Lab",
-  "description": "Local-network protocol explorer for legacy music servers.",
+  "name": "Olive Remote",
+  "short_name": "Olive Remote",
+  "description": "A simple private remote for legacy Olive music servers.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#101310",
