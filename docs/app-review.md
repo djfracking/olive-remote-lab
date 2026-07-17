@@ -5,21 +5,21 @@ Olive Remote includes an explicit offline Demo Olive so Apple and Google reviewe
 ## Reviewer steps
 
 1. Install and launch Olive Remote on a clean device.
-2. On **Find My Olive**, tap **Explore Demo Olive**.
+2. On **Find My Olive**, tap **Preview without a server** below the primary discovery button.
 3. Browse Albums, Artists, Genres, Tracks, and Playlists.
 4. Search for `light`, `north`, `jazz`, or `night`.
 5. Start a track and test play/pause, previous, next, stop, progress, title changes, and artwork.
 6. Open Settings to inspect device switching and language choices.
 7. Open Add Music to see the demo-specific explanation.
-8. Tap **Connect a real Olive** in the persistent banner to leave Demo Mode.
+8. Tap **Use my Olive** in the compact preview indicator to return to physical-device setup.
 
 ## Review guarantees
 
-- Demo Mode is plainly labeled throughout the experience.
+- The preview is labeled with a compact **Preview library · fictional content** indicator.
 - All demo titles, artists, albums, playlists, and artwork are fictional and bundled with the application.
 - No audio recording, copyrighted music, external server, analytics, advertising, user account, or cloud service is used.
 - Demo API calls use the same typed application boundary as real hardware but are intercepted locally before any network transport.
-- Demo Mode never requests Local Network permission.
+- Preview mode never requests Local Network permission.
 - The real application communicates only with owner-selected devices on a private local network.
 
 ## Physical-hardware context

@@ -192,7 +192,7 @@ export function handleDemoApi(path: string, body: unknown): { handled: false } |
   if (!target || !isDemoTarget(target)) return { handled: false };
   const input = body as Record<string, unknown>;
   switch (path) {
-    case "/api/device/identify": return { handled: true, value: { ...capabilitiesForModel("o4hd"), displayName: "Demo Olive" } };
+    case "/api/device/identify": return { handled: true, value: { ...capabilitiesForModel("o4hd"), displayName: "Preview Library" } };
     case "/api/probe": return { handled: true, value: probes() };
     case "/api/library/navigation": return { handled: true, value: tree("demo-root", [
       { id: "albumname", title: "Albums", childCount: albums.length, userData: { type: "albumname" } },

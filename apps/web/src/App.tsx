@@ -278,7 +278,7 @@ export function App() {
   function startDemo() {
     setConnectionProblem("");
     setDiscovery(null);
-    confirmDevice(DEMO_TARGET, "Demo Olive");
+    confirmDevice(DEMO_TARGET, "Preview Library");
   }
 
   function exitDemo() {
@@ -367,7 +367,7 @@ export function App() {
 
     <main>
       <header><h1>{sectionLabel[section]}</h1>{savedDevices.length > 1 ? <label className={`device-switcher ${connected ? "online" : ""}`}><i /><span className="sr-only">Active Olive</span><select value={deviceKey(target)} onChange={(event) => switchDevice(event.target.value)} aria-label="Active Olive">{savedDevices.map((device) => <option key={deviceKey(device)} value={deviceKey(device)}>{device.name}</option>)}</select></label> : section !== "Settings" && <div className={`connection-pill ${connected ? "online" : ""}`}><i />{connected ? t("connected") : status}</div>}</header>
-      {demoActive && <div className="demo-banner" role="status"><span><strong>Demo Mode</strong> Fictional music and simulated playback stay on this device.</span><button onClick={exitDemo}>Connect a real Olive</button></div>}
+      {demoActive && <div className="demo-banner" role="status"><span><strong>Preview library</strong> · fictional content</span><button onClick={exitDemo}>Use my Olive</button></div>}
 
       {section === "Home" ? <NowPlayingView connected={connected} target={target} onStatus={setStatus} nowPlaying={liveNowPlaying} />
         : section === "Library" ? <LibraryView connected={connected} target={target} onStatus={setStatus} />
@@ -387,7 +387,7 @@ export function App() {
             <div className={searchAttempted ? "ready" : ""}><i /> <span><strong>Local Network access</strong><small>{searchAttempted ? "Search access requested" : "When asked, tap Allow so Olive Remote can find your server."}</small></span></div>
           </div>
           <button onClick={() => void findDevice(false)} disabled={discovering} className="discover-button primary-discovery">{discovering && <span className="spinner" />}{discovering ? "Looking for your Olive…" : "Find My Olive"}</button>
-          <button onClick={startDemo} disabled={discovering} className="secondary demo-entry">Explore Demo Olive</button>
+          <button onClick={startDemo} disabled={discovering} className="demo-entry">Preview without a server</button>
           <small className="connection-hint">Guest Wi-Fi, a VPN, or cellular-only service can prevent discovery.</small>
         </section>
 
@@ -417,6 +417,6 @@ export function App() {
         </div></details>
       </>}
     </main>
-    {connected && <MiniPlayer connected={connected} target={target} nowPlaying={liveNowPlaying} expanded={section === "Home"} onOpen={() => setSection("Home")} onToggle={() => setSection(section === "Home" ? "Library" : "Home")} onStatus={setStatus} />}
+    {connected && section !== "Lab" && <MiniPlayer connected={connected} target={target} nowPlaying={liveNowPlaying} expanded={section === "Home"} onOpen={() => setSection("Home")} onToggle={() => setSection(section === "Home" ? "Library" : "Home")} onStatus={setStatus} />}
   </div>;
 }

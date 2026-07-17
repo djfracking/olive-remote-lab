@@ -35,9 +35,9 @@ The app controls user-owned hardware on the same private Wi-Fi or Ethernet netwo
 Review path:
 
 1. Launch the app. The Find My Olive screen appears on a clean installation.
-2. Tap **Explore Demo Olive**. Do not tap Find My Olive; no Local Network permission is required for the demo.
+2. Tap **Preview without a server** below the primary discovery button. Do not tap Find My Olive; no Local Network permission is required for the preview.
 3. Review Now Playing, Library, Search, Playlists, artwork, live progress, play/pause, previous, next, stop, responsive tablet navigation, Settings, and the Add Music explanation.
-4. A persistent Demo Mode banner explains that playback and music are simulated locally. Tap **Connect a real Olive** to return to physical-device setup.
+4. A compact **Preview library · fictional content** indicator identifies the simulated local preview. Tap **Use my Olive** to return to physical-device setup.
 
 The demo never sends a network request and contains no copyrighted recordings. Live discovery and control require compatible owner-supplied hardware on the review device's LAN. A physical O4HD and iPad were used for the release smoke test.
 
@@ -45,9 +45,14 @@ The app requests local-network access because it sends SSDP discovery packets an
 
 ## Prepared media
 
-- `store-assets/ios/iphone-16-plus-now-playing.jpg` — native iPhone 16 Plus simulator capture after safe-area validation.
+- `store-assets/ios/iphone-16-plus/01-find-my-olive.png` — 1290 × 2796 iPhone connection screen.
+- `store-assets/ios/ipad-13/01-find-my-olive.png` — 2752 × 2064 iPad connection screen.
+- `store-assets/ios/ipad-13/02-now-playing.png` — 2752 × 2064 iPad Now Playing screen.
+- `store-assets/ios/ipad-13/03-albums.png` — 2752 × 2064 iPad album browser.
+- `store-assets/ios/ipad-13/04-search.png` — 2752 × 2064 iPad search results.
+- `store-assets/ios/ipad-13/05-playlist.png` — 2752 × 2064 iPad playlist detail.
 
-Additional iPad and Android phone/tablet screenshots can be prepared with simulators and emulators. Final screenshots and listing claims must be checked against a physical release candidate before submission.
+Android phone/tablet screenshots still need to be prepared. Final screenshots and listing claims must be checked against a physical release candidate before submission.
 
 ## Commercial terms
 

@@ -46,7 +46,7 @@ export function MiniPlayer({ connected, target, nowPlaying, expanded, onOpen, on
     finally { setPending(false); }
   }
 
-  return <aside className="mini-player" aria-label="Current playback">
+  return <aside className={`mini-player ${expanded ? "expanded" : ""}`} aria-label="Current playback">
     <button className="mini-track" onClick={onOpen} aria-label="Open Now Playing">
       <span className="mini-art">{art && !imageFailed ? <img src={art} alt="" onError={() => setImageFailed(true)} /> : "♪"}</span>
       <span className="mini-copy"><strong>{track?.title || (playing ? "Playing" : connected ? "Nothing playing" : "Finding your Olive…")}</strong>{(track?.artist || track?.album) && <small>{track.artist || track.album}</small>}</span>

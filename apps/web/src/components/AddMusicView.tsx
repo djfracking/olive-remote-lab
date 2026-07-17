@@ -11,7 +11,7 @@ export function AddMusicView({ connected, target }: { connected: boolean; target
     await navigator.clipboard.writeText(value); setCopied(true); window.setTimeout(() => setCopied(false), 1800);
   }
 
-  if (isDemoTarget(target)) return <section className="card module-empty"><h2>Demo library</h2><p>Demo Mode uses fictional music stored inside the app. Connect a real Olive to see local import instructions.</p></section>;
+  if (isDemoTarget(target)) return <section className="card module-empty"><h2>Preview library</h2><p>The preview uses fictional music stored inside the app. Connect a real Olive to see local import instructions.</p></section>;
 
   return <section className="module-stack">
     <div className="card add-music-intro"><p>Copy music into your Olive’s <strong>Import</strong> folder. Choose the device you are using:</p></div>
