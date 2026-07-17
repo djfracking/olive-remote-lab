@@ -1,6 +1,6 @@
 # App Store reviewer environment
 
-Olive Remote includes an explicit offline Demo Olive so Apple and Google reviewers can evaluate the main experience without discontinued physical hardware or access to a private home network.
+Olive Remote includes an explicit offline preview library so Apple and Google reviewers can evaluate the main experience without discontinued physical hardware or access to a private home network.
 
 ## Reviewer steps
 
@@ -9,7 +9,7 @@ Olive Remote includes an explicit offline Demo Olive so Apple and Google reviewe
 3. Browse Albums, Artists, Genres, Tracks, and Playlists.
 4. Search for `light`, `north`, `jazz`, or `night`.
 5. Start a track and test play/pause, previous, next, stop, progress, title changes, and artwork.
-6. Open Settings to inspect device switching and language choices.
+6. Open Settings to inspect server controls, support and privacy links, the app version, and diagnostic export.
 7. Open Add Music to see the demo-specific explanation.
 8. Tap **Use my Olive** in the compact preview indicator to return to physical-device setup.
 
@@ -24,13 +24,13 @@ Olive Remote includes an explicit offline Demo Olive so Apple and Google reviewe
 
 ## Physical-hardware context
 
-The release candidate was exercised on an iPad Pro against an O4HD on the same private network. Real discovery, library browsing, artwork, search, now-playing state, and playback controls require compatible owner-supplied hardware. Review attachments should include a short screen recording of that physical test and the O4HD network screen with personal addresses obscured.
+An earlier build was exercised on an iPad Pro against an O4HD on the same private network. The final signed candidate must repeat that test. Real discovery, library browsing, artwork, search, now-playing state, and playback controls require compatible owner-supplied hardware. Review attachments should include a short screen recording of the final physical test and the O4HD network screen with personal addresses obscured.
 
 ## App Review contact checklist
 
 Before submission, App Store Connect still needs:
 
-- A monitored review contact name, phone number, and email address.
+- A monitored review contact name, phone number, and private email address entered directly in App Store Connect.
 - The review steps above pasted into App Review Notes.
 - A demo-mode screen recording and a redacted real-hardware recording attached when possible.
 - Confirmation that no demo account or credentials are required.

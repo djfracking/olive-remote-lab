@@ -12,6 +12,10 @@ The permanent package ID is `com.djfracking.oliveremotelab`. Java 21 and the And
 4. Run `npm run android:release` and verify the resulting `.aab` signature.
 5. Create the Play Console record, enroll in Play App Signing, complete the store listing and data-safety declaration, and upload first to an internal or closed test track.
 
+The app currently targets API 36. It uses `INTERNET`, network-state, Wi-Fi-state, and multicast-state permissions for private-LAN discovery and control; it does not request location, Nearby Wi-Fi Devices, or the API 37 `ACCESS_LOCAL_NETWORK` permission. Revisit the local-network permission flow when the target SDK moves to API 37.
+
+The generated release bundle is not store-ready until `apps/web/android/signing.properties` exists and `jarsigner -verify` confirms the upload-key signature. An unsigned bundle produced with `android:bundle:unsigned` is only a build check and must never be uploaded.
+
 Google requires an upload-key-signed Android App Bundle for Play distribution. See [Prepare your app for release](https://developer.android.com/studio/publish/preparing), [Sign your app](https://developer.android.com/studio/publish/app-signing), and [Upload your app bundle](https://developer.android.com/studio/publish/upload-bundle).
 
 ## iOS / App Store
@@ -25,7 +29,7 @@ The permanent bundle ID is `com.djfracking.oliveremotelab`; the deployment targe
 5. Run `npm run ios:archive`, validate the archive, and upload it to App Store Connect.
 6. Add the privacy details, product-page copy, screenshots, support URL, and review notes. Test through TestFlight before App Review.
 
-The source, simulator build, signed physical-device build, version 1.0.0 iOS archive, and physical O4HD/iPad smoke test have succeeded on this Mac. The remaining iOS release gates are rebuilding the archive from the final committed source, creating the App Store Connect record, final screenshots and metadata, distribution export/upload, TestFlight testing, and App Review.
+Earlier simulator, development-signed device, archive, and physical O4HD/iPad smoke tests succeeded on this Mac. Those artifacts predate the final source. The remaining iOS release gates are rebuilding the 1.0.0 archive from the final commit with App Store distribution signing, creating the App Store Connect record, validating the refreshed screenshots and metadata, exporting/uploading the archive, TestFlight testing, and App Review.
 
 Apple requires approval before an iOS app can use the multicast entitlement. See [Multicast Networking entitlement](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.networking.multicast), [TestFlight](https://developer.apple.com/testflight/), and [Submitting to the App Store](https://developer.apple.com/app-store/submitting/).
 
@@ -35,11 +39,19 @@ Version 1.0 Debug builds use `AppDebug.entitlements` and App Store builds use `A
 
 - The app has no accounts, advertising, analytics, cloud library, or remote control service.
 - Device addresses, library metadata, request history, and diagnostics remain on the device unless the user explicitly exports diagnostics.
-- The public Firebase site hosts product information and the privacy policy only.
+- The public Firebase site hosts product information, the privacy policy, and a support form backed by a narrowly scoped email-forwarding Function. It has no music-server relay or application database.
 - The app must explain local-network access as necessary to find and control the user's own music server.
 
 Draft listing copy, keywords, review notes, and privacy answers are in [store-listing-draft.md](store-listing-draft.md).
 The exact offline review path is also captured in [app-review.md](app-review.md).
+
+## Current submission blockers
+
+- Android upload keystore/signing properties and a signature-verified AAB.
+- Final Android phone and tablet screenshots from the release candidate.
+- A fresh App Store distribution archive and upload from the final commit.
+- App Store Connect and Play Console records, pricing, age/content declarations, privacy questionnaires, and monitored support/review contact details.
+- TestFlight/internal-track testing plus the physical-device matrix below.
 
 ## Physical release gate
 

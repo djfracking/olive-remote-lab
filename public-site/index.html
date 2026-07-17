@@ -4,10 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#0b0e0b" />
-    <meta name="description" content="A local-network remote and protocol lab for legacy Olive music servers." />
+    <meta name="description" content="A private local-network remote for compatible legacy Olive music servers." />
     <title>Olive Remote</title>
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=20260717" />
+    <link rel="stylesheet" href="styles.css?v=20260718" />
   </head>
   <body>
     <header class="nav">
@@ -15,6 +15,7 @@
       <nav aria-label="Main navigation">
         <a href="#how-it-works">How it works</a>
         <a href="#compatibility">Compatibility</a>
+        <a href="#support">Support</a>
         <a href="privacy.html">Privacy</a>
         <a class="nav-cta" href="https://github.com/djfracking/olive-remote-lab">GitHub</a>
       </nav>
@@ -24,12 +25,12 @@
       <section class="hero">
         <div class="eyebrow"><i></i> Local network only · Independent project</div>
         <h1>Your music server,<br /><em>back in reach.</em></h1>
-        <p class="lead">A modern, private remote and protocol explorer for legacy music servers. No account, no cloud library, and no tracking.</p>
+        <p class="lead">A modern, private remote for compatible legacy music servers. No account, no cloud library, and no tracking.</p>
         <div class="actions">
-          <a class="primary" href="https://github.com/djfracking/olive-remote-lab/releases/download/v0.1.0-test/Olive-Remote-Lab-Android-debug.apk">Download Android test build</a>
-          <a class="secondary" href="https://github.com/djfracking/olive-remote-lab">View source</a>
+          <a class="primary" href="#support">Get release help</a>
+          <a class="secondary" href="https://github.com/djfracking/olive-remote-lab">Source &amp; issue tracker</a>
         </div>
-        <p class="build-note">Early test release · Android 7.0+ · Install only on a trusted device and LAN</p>
+        <p class="build-note">iOS and Android store release in preparation · Designed for trusted home networks</p>
         <div class="player-card" aria-label="Application preview">
           <div class="art">♪</div>
           <div><small>NOW PLAYING</small><strong>Music from your own library</strong><span>Direct from the server on your network</span></div>
@@ -58,10 +59,15 @@
 
       <section class="section boundary">
         <div><span class="label">WHY NOT RUN THE REMOTE HERE?</span><h2>The public site is a front door—not a cloud relay.</h2></div>
-        <p>These servers use local HTTP. Modern browsers intentionally block a public HTTPS page from silently reaching private HTTP devices. Use the Android app, or clone the repository and run the local proxy. This boundary keeps your library and server traffic inside your network.</p>
+        <p>These servers use local HTTP. Modern browsers intentionally block a public HTTPS page from silently reaching private HTTP devices. Use the native iOS or Android app, or clone the repository and run the local proxy for development. This boundary keeps your library and server traffic inside your network.</p>
+      </section>
+
+      <section class="section support" id="support">
+        <div><span class="label">SUPPORT</span><h2>Need a hand connecting?</h2><p>Start with the in-app connection help. Send a private support request, or export redacted diagnostics from Settings and open a reproducible issue without including music-library names or private network details.</p></div>
+        <div class="actions"><a class="primary" href="support.html">Contact support</a><a class="secondary" href="https://github.com/djfracking/olive-remote-lab/issues">Open an issue</a><a class="secondary" href="privacy.html">Privacy</a></div>
       </section>
     </main>
 
-    <footer><span>Olive Remote · 2026</span><span>Independent software · No cloud services · No tracking</span><a href="privacy.html">Privacy</a></footer>
+    <footer><span>Olive Remote · 2026</span><span>Local remote · Private support channel · No tracking</span><a href="privacy.html">Privacy</a></footer>
   </body>
 </html>

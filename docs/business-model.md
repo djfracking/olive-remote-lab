@@ -15,7 +15,7 @@ The paid native app includes:
 - Now Playing and live progress.
 - Multiple saved music servers and easy switching.
 - All subsequently verified model adapters and maintenance updates.
-- A clearly labeled, offline Demo Olive containing fictional music for evaluation and store review.
+- A clearly labeled, offline preview library containing fictional music for evaluation and store review.
 
 Store beta tracks remain free to approved testers. The public store purchase is handled entirely by Apple or Google, so Olive Remote does not need a receipt server or its own account system.
 

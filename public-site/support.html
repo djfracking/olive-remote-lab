@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b0e0b" />
+    <meta name="description" content="Contact Olive Remote support privately." />
+    <title>Support · Olive Remote</title>
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css?v=20260718" />
+    <script src="support.js?v=20260718" defer></script>
+  </head>
+  <body>
+    <header class="nav"><a class="brand" href="index.html"><img src="icon.svg" width="42" height="42" style="border-radius:11px" alt="" /> Olive Remote</a><nav><a href="index.html">Home</a><a href="privacy.html">Privacy</a><a class="nav-cta" href="https://github.com/djfracking/olive-remote-lab/issues">Issues</a></nav></header>
+    <main class="support-page">
+      <div class="eyebrow"><i></i> Private support</div>
+      <h1>How can we help?</h1>
+      <p class="lead">Describe the problem and where you encountered it. Your message goes to the private support mailbox without revealing its address.</p>
+      <form class="support-form" id="support-form">
+        <input type="hidden" name="startedAt" id="support-started-at" />
+        <label class="support-honeypot" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off" /></label>
+        <div class="form-grid">
+          <label><span>Name <small>optional</small></span><input name="name" autocomplete="name" maxlength="100" /></label>
+          <label><span>Reply email</span><input name="email" type="email" autocomplete="email" maxlength="254" required /></label>
+          <label><span>Topic</span><select name="topic" required><option value="connection">Connecting to my Olive</option><option value="playback">Playback controls</option><option value="library">Library or search</option><option value="compatibility">Device compatibility</option><option value="other">Something else</option></select></label>
+          <label><span>Olive model <small>optional</small></span><input name="model" maxlength="100" placeholder="For example, O4HD" /></label>
+        </div>
+        <label><span>What happened?</span><textarea name="message" minlength="20" maxlength="4000" rows="8" required placeholder="Include the steps you took and what you expected to happen. Do not include private network addresses or music-library names."></textarea></label>
+        <label class="consent-row"><input name="consent" type="checkbox" required /><span>I understand that my reply address and message will be used only to respond to this support request.</span></label>
+        <div class="support-submit"><button class="primary support-button" type="submit">Send support request</button><p id="support-status" role="status" aria-live="polite"></p></div>
+      </form>
+      <p class="support-privacy">No account is required. Messages are not stored in an application database. Read the <a href="privacy.html">privacy policy</a>.</p>
+    </main>
+    <footer><span>Olive Remote · 2026</span><a href="index.html">Back home</a></footer>
+  </body>
+</html>

@@ -1,4 +1,15 @@
 {
+  "functions": {
+    "source": "support-functions",
+    "codebase": "support",
+    "runtime": "nodejs22",
+    "ignore": [
+      "node_modules",
+      ".git",
+      "*.local",
+      "test"
+    ]
+  },
   "hosting": {
     "public": "public-site",
     "ignore": [
@@ -9,6 +20,15 @@
     ],
     "cleanUrls": true,
     "trailingSlash": false,
+    "rewrites": [
+      {
+        "source": "/api/support",
+        "function": {
+          "functionId": "submitOliveSupport",
+          "region": "us-central1"
+        }
+      }
+    ],
     "headers": [
       {
         "source": "**/*.apk",

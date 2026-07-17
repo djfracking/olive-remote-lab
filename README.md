@@ -1,14 +1,14 @@
 # Olive Remote
 
-A browser-first, local-network controller and protocol explorer for the complete known Olive music-server family. The O4HD is the first physically verified model; every other model is represented by an evidence-gated profile so the app does not guess across firmware generations.
+A private local-network remote for compatible legacy Olive music servers. The O4HD is the first physically verified model; every other model is represented by an evidence-gated profile so the app does not guess across firmware generations.
 
-[Public website](https://olive-remote-lab.web.app) · [Android test APK](https://github.com/djfracking/olive-remote-lab/releases/tag/v0.1.0-test) · [Source repository](https://github.com/djfracking/olive-remote-lab) · [Privacy policy](https://olive-remote-lab.web.app/privacy)
+[Public website](https://olive-remote-lab.web.app) · [Private support](https://olive-remote-lab.web.app/support) · [Source repository](https://github.com/djfracking/olive-remote-lab) · [Privacy policy](https://olive-remote-lab.web.app/privacy)
 
 Everything runs on your computer and LAN. There are no accounts, analytics, cloud services, remote fonts, or external API calls.
 
 Native Android and iOS projects are included. See [mobile store release handoff](docs/store-release.md) for signing, TestFlight, Play Console, entitlement, and physical-device release gates.
 
-The Firebase-hosted website is only the public project and download page. It is not a cloud relay and cannot control a server: modern browsers block a public HTTPS origin from silently reaching legacy private-network HTTP devices. Use the Android app or run this repository locally for control.
+The Firebase-hosted website provides product, support, and privacy information. It is not a cloud relay and cannot control a server: modern browsers block a public HTTPS origin from silently reaching legacy private-network HTTP devices. Use the native iOS or Android app, or run this repository locally for development.
 
 ## Quick start
 
@@ -68,19 +68,19 @@ The debug APK is suitable for direct testing and sideloading. Building it requir
 
 Your OS firewall may ask whether Node can accept incoming connections. Allow access only on trusted/private networks.
 
-## Using the explorer
+## Using Olive Remote
 
 - **Find my Olive:** sends SSDP M-SEARCH for UPnP root and MediaServer devices. It inspects local device-description XML. If no likely device is found, it checks only the active private IPv4 `/24`, ports `80` and `8163`, and paths `/`, `/maestro.php`, and `/index.php`. It uses short timeouts and bounded concurrency.
 - **Manual fallback:** enter the server IP (for example `192.168.1.42`) and port in **Connect a device**, then choose **Connect**. A confirmed device is remembered in that browser's local storage.
 - **Endpoint tester:** requests the three known paths on the selected port and port 8163, showing status, type, timing, preview, and errors.
 - **Library, Search, Now Playing and Playlists:** use the exact read contracts captured from the O4HD. Track play, play/pause, previous, stop and next are available from observed controller commands. Playlist editing remains locked.
 - **Automatic everyday remote:** reconnects to the remembered device or performs conservative local discovery, then opens directly to Now Playing with five primary destinations.
-- **Multilingual navigation:** English, French, German and Spanish are selected in Settings and remembered only in the browser.
-- **Add Music:** shows the model-safe SMB Import-folder instructions for Mac, Windows and iPad/iPhone; it does not invent an HTTP upload endpoint.
+- **Interface language:** version 1.0 ships in English so every customer-facing screen is complete and consistent.
+- **Add Music:** shows the model-safe SMB Import-folder instructions for Mac, Windows, iPad/iPhone, and Android; it does not invent an HTTP upload endpoint.
 - **Queue:** explains the current evidence gap. No playback-queue endpoint has been verified, so the app does not consume or acknowledge the device event stream.
-- **Settings:** shows the connected model, protocol family, capability evidence, and the full compatibility registry.
-- **Request explorer:** sends user-specified GET/POST requests through the local proxy. Query, form, and header entries use one `key=value` pair per line. This surface is explicitly experimental.
-- **Diagnostics export:** choose **Export diagnostics JSON** in Protocol logging. The proxy exports in-memory logs for the current session and redacts likely names, library metadata, playlist fields, users, and email addresses.
+- **Settings:** switches or forgets saved servers, opens connection help, links to support and privacy information, shows the app version, and exports diagnostics.
+- **Request explorer:** the local web development build retains an experimental user-specified GET/POST explorer. It is hidden from the iOS and Android store apps.
+- **Diagnostics export:** choose **Export redacted diagnostics** in Settings. The exporter removes likely names, library metadata, playlist fields, users, and email addresses.
 
 ## Project structure
 
@@ -101,9 +101,9 @@ All device-specific request construction and parsing lives in `packages/olive-cl
 - Discovery checks only ports 80 and 8163 and the three stated web paths.
 - Redirects are not followed, preventing a device response from redirecting the proxy off-LAN.
 - Logs live in proxy memory and request history/device selections live in browser local storage.
-- Nothing is sent to Firebase or any other cloud service.
+- Music-server addresses, library data, playback traffic, and diagnostics are never sent to Firebase or any other cloud service.
 
-The public website is hosted by Firebase Hosting and necessarily receives ordinary web-delivery request metadata. It has no analytics, sign-in, database, functions, or music-server API. See [public-site/privacy.html](public-site/privacy.html).
+The public website is hosted by Firebase Hosting and necessarily receives ordinary web-delivery request metadata. It has no analytics, sign-in, database, or music-server API. Its optional support form uses a narrowly scoped Firebase Function to forward a user-supplied reply address and message to a private support mailbox. See [public-site/privacy.html](public-site/privacy.html).
 
 ## Multi-model support
 

@@ -62,3 +62,25 @@ export async function writeDeviceCache<T>(target: OliveDeviceTarget, resource: s
     });
   } catch { /* Cache failures must never block the Olive. */ }
 }
+
+export async function clearDeviceCache(target: OliveDeviceTarget): Promise<void> {
+  const prefix = `${target.host.trim().toLowerCase()}:${target.port}|`;
+  for (const key of memoryCache.keys()) if (key.startsWith(prefix)) memoryCache.delete(key);
+  if (!("indexedDB" in window)) return;
+  try {
+    const db = await database();
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(STORE_NAME, "readwrite");
+      const request = transaction.objectStore(STORE_NAME).openCursor();
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) return;
+        if (String(cursor.key).startsWith(prefix)) cursor.delete();
+        cursor.continue();
+      };
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
+    });
+  } catch { /* Forgetting a saved server must still work if cache cleanup fails. */ }
+}

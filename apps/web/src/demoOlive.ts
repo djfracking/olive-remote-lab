@@ -170,7 +170,7 @@ function response(path: string, body: string, contentType = "text/html"): Transp
 
 function probes(): EndpointProbe[] {
   return ["/", "/maestro.php", "/index.php"].flatMap((path) => [80, 8163].map((port) => ({
-    ...response(path, `<html><title>Demo Olive</title><body>Reviewer demo endpoint on port ${port}</body></html>`),
+    ...response(path, `<html><title>Preview Library</title><body>Reviewer preview endpoint on port ${port}</body></html>`),
     url: `http://${DEMO_TARGET.host}:${port}${path}`,
     contentType: "text/html",
     preview: "Reviewer demo endpoint — no network request was made.",

@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#0b0e0b" />
     <title>Privacy · Olive Remote</title>
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=20260717" />
+    <link rel="stylesheet" href="styles.css?v=20260718" />
   </head>
   <body>
     <header class="nav"><a class="brand" href="index.html"><img src="icon.svg" width="42" height="42" style="border-radius:11px" alt="" /> Olive Remote</a><nav><a href="index.html">Home</a><a class="nav-cta" href="https://github.com/djfracking/olive-remote-lab">GitHub</a></nav></header>
@@ -15,9 +15,10 @@
       <h1>Privacy without an asterisk.</h1>
       <p class="lead">Olive Remote is designed to operate locally without accounts, analytics, advertising, or a cloud music library.</p>
       <section><h2>iOS, Android, and local web applications</h2><p>Device addresses, discovered service descriptions, request history, protocol logs, settings, and music metadata remain on the phone, tablet, or computer running the application. Native device backup is disabled on Android. The software communicates with private-network music servers selected or discovered by the user.</p></section>
-      <section><h2>Public website</h2><p>The public website contains no analytics SDK, sign-in system, advertising network, or contact form. Firebase Hosting necessarily processes ordinary web-server connection data such as IP address and request metadata to deliver the site and APK.</p></section>
+      <section><h2>Public website</h2><p>The public website contains no analytics SDK, sign-in system, or advertising network. Firebase Hosting necessarily processes ordinary web-server connection data such as IP address and request metadata to deliver the site.</p></section>
       <section><h2>Diagnostics</h2><p>Diagnostics are exported only when the user chooses to create a local JSON file. The exporter redacts likely library names and personally identifying fields. Users should review exported files before sharing them.</p></section>
-      <section><h2>Third parties and trademarks</h2><p>The source repository is hosted by GitHub and the public download page by Firebase Hosting. This independent project is not affiliated with or endorsed by the original hardware manufacturer. Product names are used only to describe compatibility.</p></section>
+      <section><h2>Private support requests</h2><p>The optional support form asks for a reply email address and message, plus optional name and device details. A Firebase Function processes the submission only to deliver it to the private support mailbox through Google’s email service. Olive Remote does not store support messages in a database. Email providers retain delivered messages under their own policies, and ordinary technical request metadata may appear temporarily in service logs for security and reliability.</p></section>
+      <section><h2>Third parties and trademarks</h2><p>Users may alternatively open an issue on GitHub; public issue content is governed by GitHub’s terms and privacy policy. The public information site and support endpoint are delivered by Firebase. This independent project is not affiliated with or endorsed by the original hardware manufacturer. Product names are used only to describe compatibility.</p></section>
       <section><h2>Changes</h2><p>Material changes to this notice will be published here and in the public source repository.</p></section>
     </main>
     <footer><span>Olive Remote · 2026</span><a href="index.html">Back home</a></footer>

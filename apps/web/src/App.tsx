@@ -16,9 +16,10 @@ import { AddMusicView } from "./components/AddMusicView";
 import { MiniPlayer } from "./components/MiniPlayer";
 import { Icon } from "./components/Icons";
 import { useI18n } from "./i18n";
-import { appFetch, getLocalNetworkStatus, isNativeApp, openLocalNetworkSettings, type LocalNetworkStatus } from "./nativeApi";
+import { appFetch, getLocalNetworkStatus, isNativeAndroid, isNativeApp, openLocalNetworkSettings, type LocalNetworkStatus } from "./nativeApi";
 import { TRACK_CHANGING_EVENT, TRACK_STARTING_EVENT, type TrackChangingDetail, type TrackStartingDetail } from "./playbackEvents";
 import { DEMO_TARGET, isDemoTarget } from "./demoOlive";
+import { clearDeviceCache } from "./deviceCache";
 
 type Section = "Home" | "Library" | "Search" | "Playlists" | "Add Music" | "Lab" | "Settings";
 interface Device { host: string; port: number }
@@ -248,7 +249,7 @@ export function App() {
         const key = deviceKey(device);
         const existing = items.find((item) => deviceKey(item) === key);
         const baseName = suggestedName?.trim() || profile.displayName || "Olive";
-        const saved: SavedOlive = { ...device, name: existing?.name ?? `${baseName} · ${deviceSuffix(device.host)}` };
+        const saved: SavedOlive = { ...device, name: isDemoTarget(device) ? "Preview Library" : existing?.name ?? `${baseName} · ${deviceSuffix(device.host)}` };
         return existing ? items.map((item) => deviceKey(item) === key ? saved : item) : [...items, saved];
       });
       if (section === "Lab") setSection("Home");
@@ -273,6 +274,17 @@ export function App() {
     setConnected(false); setNowPlaying(null); setHost(device.host); setPort(device.port); setStatus(`Connecting to ${device.name}…`);
     localStorage.setItem(DEVICE_KEY, JSON.stringify({ host: device.host, port: device.port }));
     void identifyDevice(device);
+  }
+
+  function forgetDevice(key: string) {
+    const device = savedDevices.find((item) => deviceKey(item) === key);
+    if (!device) return;
+    setSavedDevices((items) => items.filter((item) => deviceKey(item) !== key));
+    void clearDeviceCache(device);
+    if (deviceKey(target) !== key) return;
+    setConnected(false); setNowPlaying(null); setHost(""); setPort(80); setModelProfile(null);
+    localStorage.removeItem(DEVICE_KEY);
+    setStatus("Olive forgotten"); setSection("Lab");
   }
 
   function startDemo() {
@@ -362,7 +374,7 @@ export function App() {
   return <div className="app-shell">
     <aside className="sidebar">
       <div className="brand"><img className="brand-mark" src="/icon.svg" alt="" /><div><strong>Olive Remote</strong></div></div>
-      <nav>{sections.map((item) => <button className={section === item ? "active" : ""} onClick={() => setSection(item)} key={item}><Icon name={navIcons[item]} />{sectionLabel[item]}</button>)}</nav>
+      <nav>{sections.map((item) => <button className={section === item ? "active" : ""} aria-current={section === item ? "page" : undefined} onClick={() => setSection(item)} key={item}><Icon name={navIcons[item]} />{sectionLabel[item]}</button>)}</nav>
     </aside>
 
     <main>
@@ -374,7 +386,7 @@ export function App() {
         : section === "Search" ? <SearchView connected={connected} target={target} onStatus={setStatus} />
         : section === "Playlists" ? <PlaylistsView connected={connected} target={target} onStatus={setStatus} />
         : section === "Add Music" ? <AddMusicView connected={connected} target={target} />
-        : section === "Settings" ? <SettingsView target={target} savedDevices={savedDevices} connected={connected} onSelect={switchDevice} onOpenLab={() => setSection("Lab")} />
+        : section === "Settings" ? <SettingsView target={target} savedDevices={savedDevices} connected={connected} onSelect={switchDevice} onForget={forgetDevice} onOpenLab={() => setSection("Lab")} onExportDiagnostics={exportDiagnostics} />
         : section !== "Lab" ? null : <>
         <section className="card find-olive-card">
           <div className="find-olive-copy"><span className="connection-eyebrow">LOCAL CONNECTION</span><h2>Find your Olive</h2><p>Olive Remote connects directly to your music server at home. No account or internet connection is required.</p></div>
@@ -384,7 +396,7 @@ export function App() {
           </div>
           <div className="setup-status" aria-live="polite">
             <div className={networkState?.localAddress ? "ready" : ""}><i /> <span><strong>{networkState?.localAddress ? "Home network detected" : isNativeApp ? "Checking your home network" : "Ready to search this network"}</strong>{networkState?.localAddress && <small>{networkState.localAddress}</small>}</span></div>
-            <div className={searchAttempted ? "ready" : ""}><i /> <span><strong>Local Network access</strong><small>{searchAttempted ? "Search access requested" : "When asked, tap Allow so Olive Remote can find your server."}</small></span></div>
+            <div className={searchAttempted ? "ready" : ""}><i /> <span><strong>Local Network access</strong><small>{searchAttempted ? "Network search checked" : isNativeAndroid ? "No location permission is used." : isNativeApp ? "When asked, tap Allow so Olive Remote can find your server." : "Access stays on this local network."}</small></span></div>
           </div>
           <button onClick={() => void findDevice(false)} disabled={discovering} className="discover-button primary-discovery">{discovering && <span className="spinner" />}{discovering ? "Looking for your Olive…" : "Find My Olive"}</button>
           <button onClick={startDemo} disabled={discovering} className="demo-entry">Preview without a server</button>
@@ -397,7 +409,7 @@ export function App() {
 
         <details className="card manual-connection"><summary>Enter the Olive address manually</summary><p>If automatic discovery does not work, find the IP address in your Olive’s network settings. On most models, open <strong>Settings → Network</strong> on the Olive display.</p><div className="address-row"><label><span>IP address or .local name</span><input value={host} onChange={(event) => { setHost(event.target.value); setConnected(false); }} placeholder="192.168.1.42" /></label><label className="port"><span>Port</span><input type="number" min="1" max="65535" value={port} onChange={(event) => setPort(Number(event.target.value))} /></label><button onClick={() => confirmDevice()} disabled={!host}>Connect</button></div></details>
 
-        <details className="advanced-protocol"><summary>Advanced diagnostics</summary><div>
+        {!isNativeApp && <details className="advanced-protocol"><summary>Advanced diagnostics</summary><div>
 
         <section className="card results-card">
           <div className="section-heading"><div><span className="step">02</span><h2>Endpoint tester</h2></div><button onClick={runProbe} disabled={probing || !host} className="secondary">{probing ? "Testing…" : "Test known paths"}</button></div>
@@ -414,7 +426,7 @@ export function App() {
 
         <section className="bottom-grid"><div className="card history-card"><div className="section-heading"><div><span className="step">04</span><h2>Local request history</h2></div><button className="text-button" onClick={() => setHistory([])}>Clear</button></div>{history.length ? history.map((item) => <button key={item.id} className="history-item" onClick={() => { setMethod(item.method); setPath(item.path); }}><code>{item.method}</code><span>{item.path}</span><small>{item.status ?? "ERR"} · {item.durationMs ?? "—"} ms</small></button>) : <div className="empty compact">Requests made here will appear locally.</div>}</div>
           <div className="card log-card"><div className="section-heading"><div><span className="step">05</span><h2>Protocol logging</h2></div><span className="tag">REDACTED EXPORT</span></div><p>The proxy records request timing, status, errors, and short response previews for this session. Export removes likely names, library metadata, and email addresses.</p><button onClick={exportDiagnostics} className="secondary">Export diagnostics JSON</button></div></section>
-        </div></details>
+        </div></details>}
       </>}
     </main>
     {connected && section !== "Lab" && <MiniPlayer connected={connected} target={target} nowPlaying={liveNowPlaying} expanded={section === "Home"} onOpen={() => setSection("Home")} onToggle={() => setSection(section === "Home" ? "Library" : "Home")} onStatus={setStatus} />}
