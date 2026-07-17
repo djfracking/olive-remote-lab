@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b0e0b" />
+    <meta name="description" content="A local-network remote and protocol lab for legacy Olive music servers." />
+    <title>Olive Remote Lab</title>
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="nav">
+      <a class="brand" href="#top" aria-label="Olive Remote Lab home"><span>RL</span> Olive Remote Lab</a>
+      <nav aria-label="Main navigation">
+        <a href="#how-it-works">How it works</a>
+        <a href="#compatibility">Compatibility</a>
+        <a href="privacy.html">Privacy</a>
+        <a class="nav-cta" href="https://github.com/djfracking/olive-remote-lab">GitHub</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div class="eyebrow"><i></i> Local network only · Independent project</div>
+        <h1>Your music server,<br /><em>back in reach.</em></h1>
+        <p class="lead">A modern, private remote and protocol explorer for legacy music servers. No account, no cloud library, and no tracking.</p>
+        <div class="actions">
+          <a class="primary" href="downloads/Olive-Remote-Lab-Android-debug.apk" download>Download Android test build</a>
+          <a class="secondary" href="https://github.com/djfracking/olive-remote-lab">View source</a>
+        </div>
+        <p class="build-note">Early test release · Android 7.0+ · Install only on a trusted device and LAN</p>
+        <div class="player-card" aria-label="Application preview">
+          <div class="art">♪</div>
+          <div><small>NOW PLAYING</small><strong>Music from your own library</strong><span>Direct from the server on your network</span></div>
+          <div class="controls"><b>‹‹</b><b class="play">▶</b><b>››</b></div>
+        </div>
+      </section>
+
+      <section class="section" id="how-it-works">
+        <div class="section-heading"><span>01</span><div><h2>Simple by design</h2><p>The controller stays close to the hardware and keeps personal music data off the internet.</p></div></div>
+        <div class="feature-grid">
+          <article><b>01</b><h3>Find the server</h3><p>SSDP discovery first, followed by a conservative private-subnet check limited to known ports and paths.</p></article>
+          <article><b>02</b><h3>Browse and play</h3><p>Browse the verified library interface and use playback commands observed on real hardware.</p></article>
+          <article><b>03</b><h3>Stay private</h3><p>Addresses, request history, diagnostics, and library metadata remain on your device or local computer.</p></article>
+        </div>
+      </section>
+
+      <section class="section split" id="compatibility">
+        <div><span class="label">COMPATIBILITY</span><h2>Evidence before promises.</h2><p>O4HD support has been exercised against physical hardware. Other models are included in a capability registry and remain gated until their firmware behavior is safely observed.</p></div>
+        <div class="status-card">
+          <div><span>O4HD</span><b class="verified">Verified</b></div>
+          <div><span>O2 · O3HD · O5HD · O6HD</span><b>Capture needed</b></div>
+          <div><span>OPUS · Symphony · Musica · Melody</span><b>Capture needed</b></div>
+          <div><span>Olive ONE</span><b>Separate adapter</b></div>
+        </div>
+      </section>
+
+      <section class="section boundary">
+        <div><span class="label">WHY NOT RUN THE REMOTE HERE?</span><h2>The public site is a front door—not a cloud relay.</h2></div>
+        <p>These servers use local HTTP. Modern browsers intentionally block a public HTTPS page from silently reaching private HTTP devices. Use the Android app, or clone the repository and run the local proxy. This boundary keeps your library and server traffic inside your network.</p>
+      </section>
+    </main>
+
+    <footer><span>Olive Remote Lab · 2026</span><span>No vendor logos · No cloud services · No tracking</span><a href="privacy.html">Privacy</a></footer>
+  </body>
+</html>

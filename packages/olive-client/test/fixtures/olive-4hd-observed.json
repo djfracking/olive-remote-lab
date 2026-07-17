@@ -1,0 +1,65 @@
+{
+  "capturedAt": "2026-07-16",
+  "device": {
+    "modelEvidence": ["Olive OPUS", "OPUS4HD_CODE_START_NOT_O6HD"],
+    "server": "lighttpd/1.4.13",
+    "runtime": "PHP/5.2.0"
+  },
+  "responses": [
+    {
+      "name": "maestro-navigation-root",
+      "status": 200,
+      "contentType": "text/xml; charset=utf-8",
+      "bodyLength": 1028,
+      "tags": ["tree", "item", "userdata"],
+      "attributes": ["id", "text", "child", "name", "radio", "im0", "im1", "im2"]
+    },
+    {
+      "name": "maestro-genre-subnavigation",
+      "status": 200,
+      "contentType": "text/xml",
+      "bodyLength": 1076,
+      "tags": ["tree", "item", "userdata"],
+      "privateValuesRetained": false
+    },
+    {
+      "name": "maestro-current-playing",
+      "status": 200,
+      "contentType": "text/html",
+      "bodyLength": 31,
+      "callback": "inf_showcurrentplaying",
+      "privateValuesRetained": false
+    },
+    {
+      "name": "maestro-first-album-page",
+      "status": 200,
+      "contentType": "text/xml",
+      "bodyLength": 3452,
+      "tags": ["tree", "item", "userdata"],
+      "attributes": ["id", "text", "child", "name", "radio", "im0", "im1", "im2", "totalItems"],
+      "privateValuesRetained": false
+    },
+    {
+      "name": "maestro-empty-search",
+      "status": 200,
+      "contentType": "text/xml",
+      "bodyLength": 73,
+      "tags": ["tree"],
+      "searchTerm": "generated-impossible-token",
+      "privateValuesRetained": false
+    },
+    {
+      "name": "front-panel-music-library-menu",
+      "status": 200,
+      "contentType": "text/html; charset=UTF-8",
+      "bodyLength": 1298,
+      "keys": ["menuitems", "action", "id", "parentid", "id_type", "isDir", "menuNr", "scrollpoint", "style", "title"]
+    },
+    {
+      "name": "port-comparison",
+      "ports": [80, 8163],
+      "navigationBodiesIdentical": true,
+      "currentPlayingBodiesIdentical": true
+    }
+  ]
+}

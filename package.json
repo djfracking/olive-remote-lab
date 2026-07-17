@@ -1,0 +1,27 @@
+{
+  "name": "olive-remote-lab",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A local-network protocol explorer for legacy music servers.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run build -w @olive-remote-lab/olive-client && concurrently -k -n proxy,web -c magenta,cyan \"npm run dev -w @olive-remote-lab/proxy\" \"npm run dev -w @olive-remote-lab/web\"",
+    "test": "npm run test -w @olive-remote-lab/olive-client",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "build": "npm run build -w @olive-remote-lab/olive-client && npm run build -w @olive-remote-lab/proxy && npm run build -w @olive-remote-lab/web",
+    "android:debug": "npm run build -w @olive-remote-lab/olive-client && npm run android:debug -w @olive-remote-lab/web",
+    "android:release": "npm run build -w @olive-remote-lab/olive-client && npm run android:release -w @olive-remote-lab/web",
+    "site:prepare": "mkdir -p public-site/downloads && cp releases/Olive-Remote-Lab-Android-debug.apk public-site/downloads/Olive-Remote-Lab-Android-debug.apk",
+    "site:deploy": "npm run site:prepare && firebase deploy --only hosting"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

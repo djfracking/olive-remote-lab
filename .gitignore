@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.DS_Store
+*.local
+*.log
+.vite/
+coverage/
+.android-sdk/
+apps/web/android/local.properties
+*.apk
+*.aab
+*.tsbuildinfo
+public-site/downloads/*.apk
