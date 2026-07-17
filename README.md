@@ -6,6 +6,8 @@ A browser-first, local-network controller and protocol explorer for the complete
 
 Everything runs on your computer and LAN. There are no accounts, analytics, cloud services, remote fonts, or external API calls.
 
+Native Android and iOS projects are included. See [mobile store release handoff](docs/store-release.md) for signing, TestFlight, Play Console, entitlement, and physical-device release gates.
+
 The Firebase-hosted website is only the public project and download page. It is not a cloud relay and cannot control a server: modern browsers block a public HTTPS origin from silently reaching legacy private-network HTTP devices. Use the Android app or run this repository locally for control.
 
 ## Quick start

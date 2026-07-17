@@ -18,7 +18,7 @@ Requirements:
 
 - Node.js 20 or newer
 - npm
-- Java 21
+- Java 21 with `JAVA_HOME` pointing to that installation
 - Android SDK Platform 36 and Build Tools 36
 
 From the repository root:
@@ -45,7 +45,17 @@ For manual sideloading, copy the APK to the Android device and approve installat
 
 ## Google Play preparation
 
-The repository can generate an App Bundle with `npm run android:release`, but a market release must be signed with a private upload key. Before publishing:
+The repository can generate an unsigned validation bundle with `npm run android:bundle:unsigned`. The store command `npm run android:release` intentionally fails until a private upload key is configured.
+
+Create the private configuration without committing it:
+
+```bash
+cp apps/web/android/signing.properties.example apps/web/android/signing.properties
+```
+
+Generate or select an upload keystore, then replace all placeholder values in `signing.properties`. The keystore and completed properties file are ignored by Git. A signed bundle is written to `apps/web/android/app/build/outputs/bundle/release/app-release.aab`.
+
+Before publishing:
 
 1. Choose the permanent application ID and confirm ownership of the product name.
 2. Create and securely back up a release/upload key outside the repository.

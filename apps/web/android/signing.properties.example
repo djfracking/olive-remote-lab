@@ -1,0 +1,5 @@
+# Copy this file to signing.properties and keep the real file private.
+storeFile=../olive-remote-lab-upload.jks
+storePassword=REPLACE_WITH_PRIVATE_PASSWORD
+keyAlias=olive-remote-lab-upload
+keyPassword=REPLACE_WITH_PRIVATE_PASSWORD

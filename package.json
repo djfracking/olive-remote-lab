@@ -13,7 +13,10 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "build": "npm run build -w @olive-remote-lab/olive-client && npm run build -w @olive-remote-lab/proxy && npm run build -w @olive-remote-lab/web",
     "android:debug": "npm run build -w @olive-remote-lab/olive-client && npm run android:debug -w @olive-remote-lab/web",
+    "android:bundle:unsigned": "npm run build -w @olive-remote-lab/olive-client && npm run android:bundle:unsigned -w @olive-remote-lab/web",
     "android:release": "npm run build -w @olive-remote-lab/olive-client && npm run android:release -w @olive-remote-lab/web",
+    "ios:build": "npm run build -w @olive-remote-lab/olive-client && npm run ios:build -w @olive-remote-lab/web",
+    "ios:archive": "npm run build -w @olive-remote-lab/olive-client && npm run ios:archive -w @olive-remote-lab/web",
     "site:deploy": "firebase deploy --only hosting"
   },
   "devDependencies": {

@@ -1,5 +1,23 @@
 apply plugin: 'com.android.application'
 
+def releaseSigningProperties = new Properties()
+def releaseSigningFile = rootProject.file("signing.properties")
+if (releaseSigningFile.exists()) {
+    releaseSigningProperties.load(new FileInputStream(releaseSigningFile))
+}
+def hasReleaseSigning = ["storeFile", "storePassword", "keyAlias", "keyPassword"].every {
+    releaseSigningProperties.getProperty(it)
+}
+def appVersionCode = (System.getenv("OLIVE_VERSION_CODE") ?: "1").toInteger()
+def appVersionName = System.getenv("OLIVE_VERSION_NAME") ?: "0.1.0"
+def allowUnsignedRelease = project.hasProperty("allowUnsignedRelease")
+
+gradle.taskGraph.whenReady { graph ->
+    if (graph.hasTask(":app:bundleRelease") && !hasReleaseSigning && !allowUnsignedRelease) {
+        throw new GradleException("Release signing is not configured. Copy signing.properties.example to signing.properties and provide the private upload-key values.")
+    }
+}
+
 android {
     namespace = "com.djfracking.oliveremotelab"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +25,8 @@ android {
         applicationId "com.djfracking.oliveremotelab"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode appVersionCode
+        versionName appVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,8 +34,19 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile rootProject.file(releaseSigningProperties.getProperty("storeFile"))
+                storePassword releaseSigningProperties.getProperty("storePassword")
+                keyAlias releaseSigningProperties.getProperty("keyAlias")
+                keyPassword releaseSigningProperties.getProperty("keyPassword")
+            }
+        }
+    }
     buildTypes {
         release {
+            if (hasReleaseSigning) signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

@@ -1,5 +1,5 @@
 import type { OliveDeviceTarget } from "@olive-remote-lab/olive-client";
-import { isNativeAndroid } from "./nativeApi";
+import { isNativeApp } from "./nativeApi";
 
 export function artworkUrl(target: OliveDeviceTarget, value: string): string {
   if (!value) return "";
@@ -13,10 +13,10 @@ export function artworkUrl(target: OliveDeviceTarget, value: string): string {
       host = parsed.hostname;
       port = parsed.port ? Number(parsed.port) : 80;
       path = `${parsed.pathname}${parsed.search}`;
-      if (isNativeAndroid) return value;
+      if (isNativeApp) return value;
     } catch { return ""; }
   }
   if (!path.startsWith("/")) return "";
-  if (isNativeAndroid) return `http://${host}:${port}${path}`;
+  if (isNativeApp) return `http://${host}:${port}${path}`;
   return `/api/artwork?host=${encodeURIComponent(host)}&port=${port}&path=${encodeURIComponent(path)}`;
 }

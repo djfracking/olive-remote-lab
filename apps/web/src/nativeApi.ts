@@ -52,14 +52,15 @@ interface NativeLogEntry {
 }
 
 export const isNativeAndroid = Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android";
-const OliveDiscovery = isNativeAndroid ? registerPlugin<DiscoveryPlugin>("OliveDiscovery") : null;
+export const isNativeApp = Capacitor.isNativePlatform() && ["android", "ios"].includes(Capacitor.getPlatform());
+const OliveDiscovery = isNativeApp ? registerPlugin<DiscoveryPlugin>("OliveDiscovery") : null;
 const nativeLogs: NativeLogEntry[] = [];
 
 function assertPrivateHost(host: string): void {
   const normalized = host.trim().toLowerCase();
   const privateIpv4 = /^(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|169\.254\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})$/;
   if (!privateIpv4.test(normalized) && !normalized.endsWith(".local")) {
-    throw new Error("Android permits requests only to private LAN addresses or .local names.");
+    throw new Error("The native app permits requests only to private LAN addresses or .local names.");
   }
 }
 
@@ -193,7 +194,7 @@ async function inspectOpenHost(host: OpenHost): Promise<NativeCandidate | null> 
 }
 
 async function discoverNative(): Promise<{ candidates: NativeCandidate[]; subnet?: string; ssdpResponses: number }> {
-  if (!OliveDiscovery) throw new Error("Native discovery is available only in the Android app.");
+  if (!OliveDiscovery) throw new Error("Native discovery is available only in the Android or iOS app.");
   const ssdp = await OliveDiscovery.discover({ timeoutMs: 1_800 });
   const uniqueReplies = [...new Map(ssdp.responses.map((reply) => [reply.address, reply])).values()];
   const inspected = await Promise.all(uniqueReplies.map(inspectSsdp));
@@ -239,7 +240,7 @@ async function handleNativeRoute(path: string, init?: RequestInit): Promise<unkn
     case "/api/logs/export": return {
       exportedAt: new Date().toISOString(),
       redacted: true,
-      platform: "android",
+      platform: Capacitor.getPlatform(),
       logs: nativeLogs.map(({ route, ...entry }) => ({ ...entry, route, device: "[LOCAL_DEVICE]" })),
     };
     default: throw new Error(`Native route is not implemented: ${path}`);
@@ -248,7 +249,7 @@ async function handleNativeRoute(path: string, init?: RequestInit): Promise<unkn
 
 export async function appFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const value = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-  if (!isNativeAndroid || !value.startsWith("/api/")) return fetch(input, init);
+  if (!isNativeApp || !value.startsWith("/api/")) return fetch(input, init);
   const path = value.split("?")[0] ?? value;
   const started = performance.now();
   try {
