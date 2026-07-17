@@ -1,0 +1,12 @@
+{
+  "name": "Olive Remote Lab",
+  "short_name": "Remote Lab",
+  "description": "Local-network protocol explorer for legacy music servers.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#101310",
+  "theme_color": "#b7dc71",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
