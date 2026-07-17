@@ -14,8 +14,7 @@
     "build": "npm run build -w @olive-remote-lab/olive-client && npm run build -w @olive-remote-lab/proxy && npm run build -w @olive-remote-lab/web",
     "android:debug": "npm run build -w @olive-remote-lab/olive-client && npm run android:debug -w @olive-remote-lab/web",
     "android:release": "npm run build -w @olive-remote-lab/olive-client && npm run android:release -w @olive-remote-lab/web",
-    "site:prepare": "mkdir -p public-site/downloads && cp releases/Olive-Remote-Lab-Android-debug.apk public-site/downloads/Olive-Remote-Lab-Android-debug.apk",
-    "site:deploy": "npm run site:prepare && firebase deploy --only hosting"
+    "site:deploy": "firebase deploy --only hosting"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

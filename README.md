@@ -2,7 +2,7 @@
 
 A browser-first, local-network controller and protocol explorer for the complete known Olive music-server family. The O4HD is the first physically verified model; every other model is represented by an evidence-gated profile so the app does not guess across firmware generations.
 
-[Public website](https://olive-remote-lab.web.app) · [Source repository](https://github.com/djfracking/olive-remote-lab) · [Privacy policy](https://olive-remote-lab.web.app/privacy)
+[Public website](https://olive-remote-lab.web.app) · [Android test APK](https://github.com/djfracking/olive-remote-lab/releases/tag/v0.1.0-test) · [Source repository](https://github.com/djfracking/olive-remote-lab) · [Privacy policy](https://olive-remote-lab.web.app/privacy)
 
 Everything runs on your computer and LAN. There are no accounts, analytics, cloud services, remote fonts, or external API calls.
 
