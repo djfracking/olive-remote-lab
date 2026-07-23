@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en" data-default-source="direct">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b0e0b" />
+    <meta name="description" content="A private, three-step Olive owner diagnostic for model compatibility, remote-app loss, startup trouble, library preservation, firmware, and network problems." />
+    <meta name="robots" content="index,follow" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Check my Olive · Private owner diagnostic" />
+    <meta property="og:description" content="Share the device state—not private network or library data—and receive the closest evidence-based next step." />
+    <meta property="og:url" content="https://olive-remote-lab.web.app/diagnostic" />
+    <link rel="canonical" href="https://olive-remote-lab.web.app/diagnostic" />
+    <title>Check my Olive · Private owner diagnostic</title>
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css?v=20260718-3" />
+    <script src="/attribution.js?v=20260718-3" defer></script>
+    <script src="/diagnostic.js?v=20260718-4" defer></script>
+  </head>
+  <body>
+    <header class="nav">
+      <a class="brand" href="/" aria-label="Olive Remote home"><img src="/icon.svg" width="42" height="42" style="border-radius:11px" alt="" /> Olive Remote</a>
+      <nav aria-label="Main navigation"><a href="/olive-4hd">O4HD help</a><a href="/support">General support</a><a href="/privacy">Privacy</a><a class="nav-cta" href="/">Home</a></nav>
+    </header>
+
+    <main class="diagnostic-shell">
+      <header class="diagnostic-intro">
+        <div class="eyebrow"><i></i> Private owner diagnostic</div>
+        <h1>Check my<br /><em>Olive.</em></h1>
+        <p class="lead">Tell us what the device is doing. We will use the model, symptoms, and reply address to assess the closest safe path—without asking for private network or music-library data.</p>
+        <div class="diagnostic-trust" aria-label="Privacy summary">
+          <span>No account</span><span>No database</span><span>No analytics</span><span>About two minutes</span>
+        </div>
+      </header>
+
+      <div class="diagnostic-layout">
+        <aside class="diagnostic-sidebar" aria-label="Diagnostic progress">
+          <p class="label">YOUR PROGRESS</p>
+          <ol class="diagnostic-progress">
+            <li data-progress-step aria-current="step"><span>1</span><div><b>Identify it</b><small>Model and firmware</small></div></li>
+            <li data-progress-step><span>2</span><div><b>Describe it</b><small>Startup, network, issue</small></div></li>
+            <li data-progress-step><span>3</span><div><b>Send privately</b><small>Context and consent</small></div></li>
+          </ol>
+          <div class="trust-alert compact"><strong>Leave private details out.</strong> Never enter an IP address, serial number, password, music title, playlist name, or library metadata.</div>
+        </aside>
+
+        <form class="support-form diagnostic-form" id="diagnostic-form" data-source-form>
+          <input type="hidden" name="startedAt" id="diagnostic-started-at" />
+          <input type="hidden" name="source" value="direct" />
+          <label class="support-honeypot" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off" /></label>
+
+          <section class="diagnostic-step" data-diagnostic-step aria-labelledby="diagnostic-step-1">
+            <span class="step-kicker">Step 1 of 3</span>
+            <h2 id="diagnostic-step-1" tabindex="-1">Which Olive is it?</h2>
+            <p>Choose the front-panel model name. Selecting a model does not mean compatibility is already verified.</p>
+            <div class="form-grid">
+              <label><span>Olive model</span>
+                <select name="model" required>
+                  <option value="">Choose a model</option>
+                  <option value="o4hd">Olive O4HD / 4HD</option>
+                  <option value="o3hd">Olive O3HD / 3HD</option>
+                  <option value="o5hd">Olive O5HD / 5HD</option>
+                  <option value="o6hd">Olive O6HD / 6HD</option>
+                  <option value="olive4">Olive 4</option>
+                  <option value="olive2">Olive 2</option>
+                  <option value="o2m">Olive O2M</option>
+                  <option value="opus4">Olive OPUS No. 4</option>
+                  <option value="opus">Olive OPUS / OPUS No. 3 / No. 5</option>
+                  <option value="musica">Olive Musica</option>
+                  <option value="symphony">Olive Symphony</option>
+                  <option value="melody">Olive Melody</option>
+                  <option value="one">Olive ONE — separate platform</option>
+                  <option value="other">Another Olive model</option>
+                  <option value="unknown">I am not sure</option>
+                </select>
+              </label>
+              <label><span>Firmware <small>optional</small></span><input name="firmware" maxlength="80" autocomplete="off" placeholder="For example, 4.3.2 or Unknown" /></label>
+            </div>
+            <p class="field-note"><strong>Current evidence:</strong> O4HD is physically tested for local connection and core library interfaces. Other models need captures; Olive ONE is separate and unverified.</p>
+            <div class="diagnostic-actions"><span></span><button class="primary support-button" type="button" data-step-action="next">Continue</button></div>
+          </section>
+
+          <section class="diagnostic-step" data-diagnostic-step aria-labelledby="diagnostic-step-2" hidden>
+            <span class="step-kicker">Step 2 of 3</span>
+            <h2 id="diagnostic-step-2" tabindex="-1">What is it doing?</h2>
+            <p>These answers separate local-control problems from hardware and preservation issues.</p>
+            <label><span>What happens when it starts?</span>
+              <select name="bootState" required>
+                <option value="">Choose the closest state</option>
+                <option value="normal">Starts normally</option>
+                <option value="waking-up">Stuck on Waking Up</option>
+                <option value="starting-up">Stuck on System Starting Up</option>
+                <option value="screen-problem">Screen is blank, white, or frozen</option>
+                <option value="will-not-boot">Will not start</option>
+                <option value="unknown">Not sure</option>
+              </select>
+            </label>
+            <label><span>Can you see it on your local network?</span>
+              <select name="networkVisibility" required>
+                <option value="">Choose the closest answer</option>
+                <option value="visible">Yes — it is visible on the local network</option>
+                <option value="not-visible">No — it is not visible</option>
+                <option value="not-checked">I have not checked / I am not sure</option>
+              </select>
+            </label>
+            <label><span>What is the main problem?</span>
+              <select name="issue" required>
+                <option value="">Choose one main problem</option>
+                <option value="remote-app">Original remote app missing or unusable</option>
+                <option value="startup">Startup, freeze, or wake problem</option>
+                <option value="drive-recovery">Hard-drive / SSD failure or recovery</option>
+                <option value="library-export">Library backup, export, or migration</option>
+                <option value="firmware">Firmware or recovery image</option>
+                <option value="network">Wi-Fi, Ethernet, SMB, NAS, DLNA, or discovery</option>
+                <option value="display">Display or touchscreen</option>
+                <option value="cd-metadata">CD drive, ripping, metadata, or artwork</option>
+                <option value="internet-radio">Internet radio or discontinued online service</option>
+                <option value="other">Something else</option>
+              </select>
+            </label>
+            <div class="diagnostic-actions"><button class="secondary support-button" type="button" data-step-action="back">Back</button><button class="primary support-button" type="button" data-step-action="next">Continue</button></div>
+          </section>
+
+          <section class="diagnostic-step" data-diagnostic-step aria-labelledby="diagnostic-step-3" hidden>
+            <span class="step-kicker">Step 3 of 3</span>
+            <h2 id="diagnostic-step-3" tabindex="-1">Where should we reply?</h2>
+            <p>Your submission is delivered to the private support mailbox. It is not added to an application database.</p>
+            <div class="form-grid">
+              <label><span>Country</span>
+                <select name="country" required>
+                  <option value="">Choose your country</option>
+                  <option value="US">United States</option><option value="GB">United Kingdom</option><option value="CA">Canada</option><option value="AU">Australia</option>
+                  <option value="DE">Germany</option><option value="FR">France</option><option value="NL">Netherlands</option><option value="PL">Poland</option>
+                  <option value="DK">Denmark</option><option value="TW">Taiwan</option><option value="ES">Spain</option><option value="IT">Italy</option>
+                  <option value="GR">Greece</option><option value="BE">Belgium</option><option value="CH">Switzerland</option><option value="AT">Austria</option>
+                  <option value="SE">Sweden</option><option value="NO">Norway</option><option value="HK">Hong Kong</option><option value="OTHER">Other / not listed</option>
+                </select>
+              </label>
+              <label><span>Reply email</span><input name="email" type="email" autocomplete="email" maxlength="254" required /></label>
+            </div>
+            <label><span>What happened, and what have you tried?</span><textarea name="details" minlength="20" maxlength="4000" rows="7" required placeholder="Include the symptoms and any non-destructive checks. Do not include IP addresses, serial numbers, credentials, music titles, playlist names, or library metadata."></textarea></label>
+            <label class="consent-row"><input name="consent" type="checkbox" required /><span>I agree that Olive Remote may use these device details and my email address to assess and reply to this request.</span></label>
+            <label class="consent-row optional-consent"><input name="releaseConsent" type="checkbox" /><span>Email me once if relevant compatibility testing or store availability opens for this model. <small>Optional; this is not a general marketing subscription.</small></span></label>
+            <div class="diagnostic-actions"><button class="secondary support-button" type="button" data-step-action="back">Back</button><button class="primary support-button" type="submit">Send private diagnostic</button></div>
+          </section>
+
+          <section class="diagnostic-complete" id="diagnostic-complete" hidden>
+            <span class="success-mark" aria-hidden="true">✓</span><h2>Diagnostic sent.</h2><p>We will review the model and device state, then reply by email. If the server or library may be at risk, avoid resets, unverified firmware, and writes to the original disk while you wait.</p><a class="secondary completion-link" href="/olive-4hd">Return to O4HD help</a>
+          </section>
+          <p class="diagnostic-status" id="diagnostic-status" role="status" aria-live="polite" tabindex="-1"></p>
+          <noscript><p class="diagnostic-status error">JavaScript is required for this form. You can still use the <a href="/support">general support page</a>.</p></noscript>
+        </form>
+      </div>
+
+      <p class="diagnostic-privacy">No account or analytics. Only a predefined source label is included when a tagged help link led to this submission. Read the <a href="/privacy">privacy policy</a>.</p>
+    </main>
+
+    <footer><span>Olive Remote · 2026</span><span>Independent project · Not affiliated with or endorsed by the original manufacturer</span><a href="/privacy">Privacy</a></footer>
+  </body>
+</html>

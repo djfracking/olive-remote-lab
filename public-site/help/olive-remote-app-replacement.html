@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en" data-default-source="site-remote-app">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b0e0b" />
+    <meta name="description" content="How to control a working legacy Olive music server after the original remote app disappeared, with honest O4HD compatibility and local-network requirements." />
+    <meta name="robots" content="index,follow,max-image-preview:large" />
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="Olive remote app replacement · What works in 2026" />
+    <meta property="og:description" content="A private modern remote is being prepared for store release. Check your model, network, and compatibility without cloud access." />
+    <meta property="og:url" content="https://olive-remote-lab.web.app/help/olive-remote-app-replacement" />
+    <link rel="canonical" href="https://olive-remote-lab.web.app/help/olive-remote-app-replacement" />
+    <title>Olive remote app replacement · What works in 2026</title>
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css?v=20260718-3" />
+    <script src="/attribution.js?v=20260718-3" defer></script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "What replaces the discontinued Olive remote app?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Olive Remote is an independent local-network controller in preparation for iOS and Android store release. Local connection and core library, search, Now Playing, and front-panel interfaces were tested on physical O4HD hardware, but behavior may vary by firmware. Compatibility with other models is not yet promised." }
+          },
+          {
+            "@type": "Question",
+            "name": "Does Olive Remote need an account or cloud connection?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No account or cloud music library is required. The app communicates with a compatible server on the same trusted local network." }
+          },
+          {
+            "@type": "Question",
+            "name": "Does Olive Remote support Olive ONE?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Not currently. Olive ONE is a separate, unverified platform and needs its own observed adapter before compatibility can be claimed." }
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <header class="nav">
+      <a class="brand" href="/" aria-label="Olive Remote home"><img src="/icon.svg" width="42" height="42" style="border-radius:11px" alt="" /> Olive Remote</a>
+      <nav aria-label="Main navigation"><a href="/olive-4hd">O4HD help</a><a href="/help/olive-4hd-stuck-waking-up">Startup</a><a href="/help/olive-library-export-recovery">Library safety</a><a class="nav-cta" href="/diagnostic?source=site-remote-app" data-source-link>Check compatibility</a></nav>
+    </header>
+
+    <main>
+      <article class="resource-article">
+        <header class="resource-article-header">
+          <div class="eyebrow"><i></i> Legacy Olive control · Local and private</div>
+          <h1>The old app is gone.<br /><em>Your server may not be.</em></h1>
+          <p class="lead">A working, network-accessible Olive can still have useful life even when its original phone controller no longer runs. Olive Remote is a modern independent controller in preparation for store release. Local connection and core library, search, Now Playing, and front-panel interfaces were tested on physical O4HD hardware; only commands with current evidence are exposed, and behavior may vary by firmware.</p>
+          <div class="actions"><a class="primary" href="/diagnostic?source=site-remote-app" data-source-link>Check my model</a><a class="secondary" href="#requirements">See what is required</a></div>
+          <p class="build-note">No account · No subscription · No cloud library · Native iOS and Android release in preparation</p>
+        </header>
+
+        <section class="resource-section" id="requirements">
+          <span class="label">BEFORE A REMOTE CAN CONNECT</span><h2>The server must still be working.</h2>
+          <div class="decision-grid">
+            <article class="decision-card positive"><h3>Good candidate</h3><ul><li>The Olive reaches its normal home screen.</li><li>It is connected to the main home router.</li><li>The router shows it as a connected device.</li><li>Your phone or tablet uses the same trusted network.</li><li>You own and control the device and network.</li></ul></article>
+            <article class="decision-card caution"><h3>Needs another path first</h3><ul><li>The server does not power on or finish startup.</li><li>It clicks, loops, or repeatedly loses power.</li><li>It is isolated on guest Wi-Fi or behind a VPN.</li><li>The only concern is recovering files from a failed disk.</li><li>The device is Olive ONE, which remains unverified.</li></ul></article>
+          </div>
+        </section>
+
+        <section class="resource-section">
+          <span class="label">HOW IT WORKS</span><h2>Direct control inside your home.</h2>
+          <ol class="decision-steps compact">
+            <li><span>1</span><div><h3>Join the same trusted network</h3><p>The phone or tablet and server must be connected to the main home Wi-Fi or Ethernet LAN. Guest networks commonly block local devices from reaching one another.</p></div></li>
+            <li><span>2</span><div><h3>Find or enter the server locally</h3><p>Olive Remote first uses local discovery. A manual address is a fallback inside the app; do not post that private address in a forum or diagnostic.</p></div></li>
+            <li><span>3</span><div><h3>Confirm the exact model</h3><p>Only the O4HD has been exercised against physical hardware. Other models remain capture-needed rather than being assumed compatible from their names.</p></div></li>
+            <li><span>4</span><div><h3>Use only evidenced functions</h3><p>On tested O4HD hardware, the app can use the core library, search, Now Playing, and front-panel interfaces. Volume, queue reading or reordering, playlist editing, metadata editing, destructive library operations, and device settings are not verified.</p></div></li>
+          </ol>
+        </section>
+
+        <section class="resource-section split">
+          <div><span class="label">MODEL STATUS</span><h2>Compatibility is evidence-gated.</h2><p>Selected local interfaces were tested on physical O4HD hardware, but that does not establish every function or firmware. O2, O3HD, O5HD, O6HD, OPUS, Symphony, Musica, and Melody remain capture-needed. Olive ONE is separate and unverified; this page does not claim ONE support.</p></div>
+          <div class="status-card"><div><span>O4HD</span><b class="verified">Physically verified</b></div><div><span>Other HD models</span><b>Capture needed</b></div><div><span>Earlier Olive families</span><b>Capture needed</b></div><div><span>Olive ONE</span><b>Separate · Unverified</b></div></div>
+        </section>
+
+        <section class="resource-section trust-boundary">
+          <span class="label">PUBLIC WEBSITE BOUNDARY</span><h2>This page cannot control your Olive.</h2>
+          <p>A public HTTPS website cannot safely act as a relay into a private legacy HTTP server. The controller must run locally as the native app or, for developers, from the public source repository with the local proxy. Your server traffic and music metadata should stay inside your network.</p>
+          <div class="actions"><a class="secondary" href="https://github.com/djfracking/olive-remote-lab">View the source repository</a></div>
+        </section>
+
+        <section class="resource-section" id="sources">
+          <span class="label">EVIDENCE AND OWNER REPORTS</span><h2>Why this problem is being addressed.</h2>
+          <ul class="source-list">
+            <li><a href="https://www.appbrain.com/app/olive-app/olive.app?install=appwidget">AppBrain · archived Olive Android app footprint</a><small>Aggregate download, rating, and reconnect/discovery-review signal; reviewer identities are not collected.</small></li>
+            <li><a href="https://www.stereonet.com/forums/topic/624665-olive-4/">StereoNET · Olive 4 owner discussion</a><small>Recent owner discussion of iMaestro loss, support continuity, export, and continued use.</small></li>
+            <li><a href="https://community.volumio.com/t/no-tracks-in-dlna-browser/47954">Volumio · Olive O4HD DLNA discussion</a><small>Public interoperability and missing-app discussion used to understand the migration path.</small></li>
+            <li><a href="https://github.com/djfracking/olive-remote-lab/blob/release/docs/olive-4hd-protocol-map.md">Olive Remote · redacted O4HD protocol map</a><small>Observed O4HD request families, tested boundaries, and quarantined operations from physical-hardware work.</small></li>
+          </ul>
+        </section>
+
+        <section class="resource-section resource-faq" aria-labelledby="faq-heading">
+          <span class="label">COMMON QUESTIONS</span><h2 id="faq-heading">Remote replacement questions</h2>
+          <details><summary>Can I download the replacement today?</summary><p>The iOS and Android store release is in preparation. The diagnostic includes a separate optional checkbox for one release email; support replies do not automatically subscribe you.</p></details>
+          <details><summary>Does it need an Olive cloud service?</summary><p>No. The intended connection is directly between your device and compatible Olive server on the same trusted local network.</p></details>
+          <details><summary>Will it work with every Olive model?</summary><p>No such promise is made. The O4HD is the only model tested on physical hardware, and that testing does not establish every O4HD function or firmware. Every other model needs evidence from its real firmware, and Olive ONE requires separate work.</p></details>
+          <details><summary>Will this fix a dead server or recover its disk?</summary><p>No. A remote can control only a running, reachable server. See the startup and preservation guides before attempting repair or recovery.</p></details>
+        </section>
+
+        <section class="resource-section resource-cta"><span class="label">CHECK YOUR DEVICE</span><h2>Two minutes. No private network details.</h2><p>Share the model, boot state, network visibility, and problem. We will reply with the closest safe path and use voluntary device evidence to prioritize compatibility.</p><div class="actions"><a class="primary" href="/diagnostic?source=site-remote-app" data-source-link>Start compatibility check</a><a class="secondary" href="/support">Contact support</a></div></section>
+      </article>
+    </main>
+
+    <footer><span>Olive Remote · 2026</span><span>Independent project · Not affiliated with or endorsed by the original manufacturer</span><a href="/privacy">Privacy</a></footer>
+  </body>
+</html>

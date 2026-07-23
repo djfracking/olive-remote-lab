@@ -127,6 +127,43 @@ class NativeHttpTransport implements OliveTransport {
 
 const nativeTransport = new NativeHttpTransport();
 const nativeClient = new OliveCompatibilityClient(nativeTransport);
+interface NativeRouteJob {
+  priority: number;
+  sequence: number;
+  run: () => Promise<unknown>;
+  resolve: (value: unknown) => void;
+  reject: (reason: unknown) => void;
+}
+const nativeRouteJobs: NativeRouteJob[] = [];
+let nativeRouteBusy = false;
+let nativeRouteSequence = 0;
+
+function nativeRoutePriority(path: string): number {
+  if (path === "/api/playback") return 0;
+  if (["/api/library/navigation", "/api/library/browse", "/api/library/search", "/api/device/identify"].includes(path)) return 1;
+  if (path === "/api/now-playing") return 2;
+  if (path === "/api/library/item-metadata") return 3;
+  return 1;
+}
+
+function drainNativeRouteJobs(): void {
+  if (nativeRouteBusy) return;
+  nativeRouteJobs.sort((left, right) => left.priority - right.priority || left.sequence - right.sequence);
+  const job = nativeRouteJobs.shift();
+  if (!job) return;
+  nativeRouteBusy = true;
+  void job.run().then(job.resolve, job.reject).finally(() => {
+    nativeRouteBusy = false;
+    drainNativeRouteJobs();
+  });
+}
+
+function scheduleNativeRoute(path: string, run: () => Promise<unknown>): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    nativeRouteJobs.push({ priority: nativeRoutePriority(path), sequence: nativeRouteSequence++, run, resolve, reject });
+    drainNativeRouteJobs();
+  });
+}
 
 function xmlValue(xml: string, tag: string): string | undefined {
   const match = xml.match(new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tag}>`, "i"));
@@ -288,7 +325,7 @@ export async function appFetch(input: RequestInfo | URL, init?: RequestInit): Pr
   if (!isNativeApp || !value.startsWith("/api/")) return fetch(input, init);
   const started = performance.now();
   try {
-    const data = await handleNativeRoute(path, init);
+    const data = await scheduleNativeRoute(path, () => handleNativeRoute(path, init));
     nativeLogs.unshift({ id: crypto.randomUUID(), timestamp: new Date().toISOString(), method: init?.method ?? "GET", route: path, status: 200, durationMs: Math.round(performance.now() - started) });
     if (nativeLogs.length > 300) nativeLogs.length = 300;
     return new Response(JSON.stringify(data), { status: 200, headers: { "content-type": "application/json" } });

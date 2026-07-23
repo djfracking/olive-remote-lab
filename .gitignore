@@ -12,7 +12,9 @@ apps/web/android/app/build/
 apps/web/android/build/
 apps/web/android/signing.properties
 apps/web/ios/DerivedData/
+apps/web/ios/DerivedData-device/
 apps/web/ios/DeviceBuild/
+apps/web/ios/App/DerivedData-device/
 apps/web/ios/SourcePackages/
 apps/web/ios/output/
 apps/web/ios/**/xcuserdata/
@@ -21,4 +23,8 @@ apps/web/ios/**/*.xcuserstate
 *.aab
 *.tsbuildinfo
 .firebase/
+.olap*
+olap_*.txt
 public-site/downloads/*.apk
+public-site/downloads/*.idsig
+!public-site/downloads/olive-remote-android-tablet-1.0.0-beta.apk

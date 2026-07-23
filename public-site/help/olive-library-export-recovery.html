@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en" data-default-source="site-library-recovery">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b0e0b" />
+    <meta name="description" content="Preservation-first guidance for exporting, migrating, or recovering a legacy Olive music library. Protect the original disk and distinguish backup from failed-drive recovery." />
+    <meta name="robots" content="index,follow,max-image-preview:large" />
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="Olive library export and recovery · Preservation guide" />
+    <meta property="og:description" content="Do not reset, initialize, or write to the only copy. Start with the device state and choose a safer backup, migration, or specialist recovery path." />
+    <meta property="og:url" content="https://olive-remote-lab.web.app/help/olive-library-export-recovery" />
+    <link rel="canonical" href="https://olive-remote-lab.web.app/help/olive-library-export-recovery" />
+    <title>Olive library export and recovery · Preservation guide</title>
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css?v=20260718-3" />
+    <script src="/attribution.js?v=20260718-3" defer></script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Can Olive Remote export an Olive music library?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. Olive Remote does not provide a verified general library-export function. Export and backup options vary by model, firmware, server health, and the format in which the library is stored." }
+          },
+          {
+            "@type": "Question",
+            "name": "What should I do first if an Olive disk may be failing?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Stop unnecessary writes and repeated power cycles. Do not initialize, format, reinstall, or run repair tools against the original. If the library is unique, consult a qualified professional about an owner-authorized, read-only image." }
+          },
+          {
+            "@type": "Question",
+            "name": "Is a disk image the same as recovered playable music?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. Imaging preserves the source media for analysis. Whether playable files and metadata can be recovered depends on the disk condition, file system, model, firmware, and any proprietary storage format." }
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <header class="nav">
+      <a class="brand" href="/" aria-label="Olive Remote home"><img src="/icon.svg" width="42" height="42" style="border-radius:11px" alt="" /> Olive Remote</a>
+      <nav aria-label="Main navigation"><a href="/olive-4hd">O4HD help</a><a href="/help/olive-4hd-stuck-waking-up">Startup</a><a href="/help/olive-remote-app-replacement">Remote app</a><a class="nav-cta" href="/diagnostic?source=site-library-recovery" data-source-link>Check my Olive</a></nav>
+    </header>
+
+    <main>
+      <article class="resource-article">
+        <header class="resource-article-header">
+          <div class="eyebrow"><i></i> Library preservation · Before repair</div>
+          <h1>Protect the music<br /><em>before the machine.</em></h1>
+          <p class="lead">Export, migration, and failed-disk recovery are different jobs. The safest next step depends on whether the Olive boots, whether the network interface works, and whether another complete copy of the library exists.</p>
+          <div class="actions"><a class="primary" href="#choose-path">Choose the safe path</a><a class="secondary" href="/diagnostic?source=site-library-recovery" data-source-link>Send device state</a></div>
+          <aside class="trust-alert"><strong>If this is the only copy, stop before writing.</strong> A reset, initialization, firmware reinstall, file-system repair, or continued power cycling can reduce recovery options.</aside>
+        </header>
+
+        <section class="resource-section" id="choose-path">
+          <span class="label">FIRST DECISION</span><h2>Which state describes the server?</h2>
+          <div class="resource-grid">
+            <article class="resource-card"><h3>It boots and the library plays</h3><p>This is a migration or backup problem, not failed-disk recovery. Preserve any existing backup, avoid large unrelated changes, and identify model-specific export options before assuming one procedure fits every Olive.</p><a href="#working-server">Continue with a working server →</a></article>
+            <article class="resource-card"><h3>It boots, but behaves inconsistently</h3><p>Intermittent disappearance, freezes, repeated errors, or unusual sounds raise the stakes. Stop adding or editing music and minimize further use until the storage is assessed.</p><a href="#unstable-server">Continue with an unstable server →</a></article>
+            <article class="resource-card"><h3>It does not complete startup</h3><p>This is not an app problem. Avoid factory reset, initialization, or repeated recovery attempts. If the library is unique, prioritize preservation of the original media.</p><a href="#failed-server">Continue with a failed server →</a></article>
+          </div>
+        </section>
+
+        <section class="resource-section decision-path" id="working-server">
+          <span class="label">PATH A · WORKING SERVER</span><h2>Make a verified copy while access is stable.</h2>
+          <ol class="decision-steps compact">
+            <li><span>1</span><div><h3>Inventory what already exists</h3><p>Check external drives, NAS devices, old computers, and previous exports before changing the Olive. A complete independent copy is the best risk reduction.</p></div></li>
+            <li><span>2</span><div><h3>Record the exact model and firmware</h3><p>Export and backup behavior may differ. Do not apply instructions written for another model merely because its enclosure or product name looks similar.</p></div></li>
+            <li><span>3</span><div><h3>Test a small, reversible sample</h3><p>If a documented owner-authorized export path is available for that model and firmware, first verify a small sample away from the only copy. Confirm that audio plays and expected metadata survived.</p></div></li>
+            <li><span>4</span><div><h3>Verify the destination</h3><p>Compare file counts and sizes, open a representative range of albums, and keep the original unchanged until at least one complete copy has been verified.</p></div></li>
+          </ol>
+        </section>
+
+        <section class="resource-section decision-path" id="unstable-server">
+          <span class="label">PATH B · UNSTABLE SERVER</span><h2>Reduce activity and preserve options.</h2>
+          <p>Do not continue ripping CDs, editing metadata, importing music, or repeatedly browsing the entire library. Record symptoms, disconnect avoidable workloads, and seek model-aware technical help. A professional may recommend read-only imaging before attempting logical repairs.</p>
+        </section>
+
+        <section class="resource-section decision-path" id="failed-server">
+          <span class="label">PATH C · FAILED SERVER</span><h2>Recovery starts with the original media.</h2>
+          <div class="decision-grid">
+            <article class="decision-card positive"><h3>Ask a qualified specialist</h3><ul><li>Can the original disk be handled read-only?</li><li>Can a bit-for-bit image be made before repairs?</li><li>Will work happen on a copy rather than the source?</li><li>How will bad sectors and imaging errors be logged?</li><li>What result is realistic before authorizing more work?</li></ul></article>
+            <article class="decision-card caution"><h3>Avoid assumptions</h3><ul><li>A successful image is not automatically playable music.</li><li>A replacement disk does not recover the old library.</li><li>File-system repair may alter evidence.</li><li>Firmware files may be model- and version-specific.</li><li>Consumer cloning tools are not risk-free on failing media.</li></ul></article>
+          </div>
+        </section>
+
+        <section class="resource-section trust-boundary">
+          <span class="label">OLIVE REMOTE BOUNDARY</span><h2>The controller is not an export or recovery tool.</h2>
+          <p>Olive Remote does not clone disks, decrypt proprietary storage, repair file systems, extract a complete library, or perform destructive library operations. Its physical O4HD testing concerns local connection and core library, search, Now Playing, and front-panel interfaces—not disk recovery—and behavior may vary by firmware. Volume, queue reading or reordering, playlist editing, metadata editing, destructive library operations, and device settings are not verified.</p>
+        </section>
+
+        <section class="resource-section" id="sources">
+          <span class="label">PRESERVATION REFERENCES</span><h2>Independent material worth reviewing.</h2>
+          <ul class="source-list">
+            <li><a href="https://www.lydo.nl/download/Olive/Backup%20Exporter/Olive-Backup-Exporter.pdf">Lydo · Olive Backup Exporter guide</a><small>Documents an unofficial path for backups and original Linux-formatted drives. It does not guarantee recovery.</small></li>
+            <li><a href="https://www.5khz.com/2014/09/09/troubleshooting-an-olive-o4hd-and-replacing-the-hard-disk/">5 kHz · O4HD hard-drive replacement</a><small>Independent technical history of cloning, filesystem repair, and replacement on one O4HD.</small></li>
+            <li><a href="https://community.roonlabs.com/t/abandoned-olive-user/55752">Roon · abandoned Olive user discussion</a><small>Public discussion illustrating proprietary-backup and migration difficulty; the thread is now closed.</small></li>
+          </ul>
+        </section>
+
+        <section class="resource-section resource-faq" aria-labelledby="faq-heading">
+          <span class="label">COMMON QUESTIONS</span><h2 id="faq-heading">Library preservation questions</h2>
+          <details><summary>Can Olive Remote export my entire library?</summary><p>No. There is no verified general export function in Olive Remote. The right migration route depends on the exact model, firmware, and condition.</p></details>
+          <details><summary>Should I install a replacement disk first?</summary><p>Not if the original contains the only copy you need. A new disk may help repair the machine later, but it does not preserve the original data. Decide on imaging or professional recovery first.</p></details>
+          <details><summary>Can I run a repair utility on the old disk?</summary><p>Repair tools write changes and may reduce later options. For unique data, the safer pattern is owner-authorized read-only imaging followed by work on a copy.</p></details>
+          <details><summary>Does this page promise that every Olive library is recoverable?</summary><p>No. Results depend on physical condition, file system, model, firmware, prior repair attempts, and storage format. This guide is about reducing avoidable harm.</p></details>
+        </section>
+
+        <section class="resource-section resource-cta"><span class="label">DESCRIBE THE STATE</span><h2>Get the next question right.</h2><p>Send the model, boot state, network visibility, and issue without including an IP address, serial number, or library contents. This is not a recovery-service booking or a guarantee of recovery.</p><div class="actions"><a class="primary" href="/diagnostic?source=site-library-recovery" data-source-link>Start diagnostic</a><a class="secondary" href="/help/olive-4hd-stuck-waking-up">O4HD startup guide</a></div></section>
+      </article>
+    </main>
+
+    <footer><span>Olive Remote · 2026</span><span>Independent information · Use qualified, owner-authorized recovery services for unique data</span><a href="/privacy">Privacy</a></footer>
+  </body>
+</html>

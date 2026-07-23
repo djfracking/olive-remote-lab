@@ -1,6 +1,6 @@
-# Protocol evidence needed for control features
+# Protocol evidence gates for control features
 
-The Library, Search, Now Playing, Queue, Playlists, and Settings screens remain placeholders until the protocol is observed on real hardware. This avoids shipping guessed undocumented endpoints in the compatibility client.
+On the O4HD, local connection plus selected Library, Search, Now Playing, front-panel, and play paths have now been observed on physical hardware; the redacted request map is recorded in [olive-4hd-protocol-map.md](olive-4hd-protocol-map.md). That evidence does not establish every O4HD firmware or function. Queue reading, volume, playlist writes, device settings, and destructive operations remain gated, and every other Olive model remains unverified until its own firmware is observed. This avoids shipping guessed undocumented endpoints in the compatibility client.
 
 ## Safe capture procedure
 

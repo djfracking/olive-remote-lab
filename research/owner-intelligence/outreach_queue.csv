@@ -1,0 +1,21 @@
+tier,source_id,first_action,permission_needed,message_theme,success_metric,do_not
+1,community-diyaudio-one,Read latest posts then provide a concrete firmware/app/SMB answer,Rules check before reply,ONE-specific support resource,Useful replies and voluntary diagnostic opt-ins,No mass DMs or unverified firmware links
+1,community-stereonet-olive4,Review commercial rules and reply to the current recovery/export need,Rules check,App replacement plus safe FLAC export,Resolved question and qualified opt-ins,No generic launch announcement
+1,community-avs-official,Ask moderators for a single maintained legacy Olive resource thread,Moderator approval,All-model support index with evidence labels,Approval and sustained public Q&A,No bot-challenge bypass or bulk thread scrape
+1,community-martinlogan-firmware,Add an O6HD freeze/firmware diagnostic response,Rules check,Safe firmware provenance and parts limits,Useful thread response,No claim of authorized repair service
+1,community-whathifi-wakeup,Offer a startup decision tree tied to the exact O4HD symptom,Rules check,O4HD Waking Up triage,Problem resolution and resource clicks,No scare tactics about drive failure
+1,community-reddit-ssd,Answer publicly if the post remains open and useful,Subreddit rules,O4HD preservation-first SSD recovery,Upvotes are secondary to a solved problem,No automated keyword DM
+1,community-reddit-one-update,Answer publicly if the post remains open and useful,Subreddit rules,ONE SWU provenance and safe USB update,Useful public answer,No unverified file upload
+1,community-forumhifi-opus4,Prepare a reviewed French support reply,Rules check and native-language review,Opus 4 continued-use and radio/app resource,Helpful replies and opt-ins,No machine-translated promotional copy
+1,community-ls35a-o3hd,Prepare a reviewed French support reply,Rules check and native-language review,O3HD/O4HD discontinued support and remote fallback,Helpful replies and opt-ins,No machine-translated promotional copy
+1,community-audiostereo-o4hd-drive,Prepare a reviewed Polish repair/recovery reply,Rules check and native-language review,O4HD disk preservation and recovery,Helpful replies and opt-ins,No destructive disk instructions without warnings
+2,community-roon-one,Ask whether a current migration/resource topic is welcome,Moderator or category rules,ONE and HD-series migration boundaries,Qualified migration conversations,No unsupported Roon integration claim
+2,community-volumio-dlna,Add DLNA/NAS interoperability information only if still relevant,Rules check,O4HD discovery and migration,Problem resolution,No product pitch detached from the thread
+2,community-hifi4all,Ask whether a Danish legacy support index is welcome,Moderator approval and native-language review,Firmware display backup and boot issues,Approved resource post,No machine-translated promotional copy
+2,community-hififorum-defects,Ask about German vendor/resource posting rules,Moderator approval and native-language review,Freeze repair and local remote control,Approved resource post,No entry into old repair disputes
+2,community-mobile01,Ask about a Traditional Chinese owner-resource post,Moderator approval and native-language review,ONE delivery firmware and support continuity,Approved resource post,No campaign-backer profiling
+2,community-tweakers-one,Ask about a Dutch historical-owner resource post,Moderator approval and native-language review,ONE firmware app and migration,Approved resource post,No campaign-backer profiling
+3,blog-lydo-hub,Contact through a current public business/editorial channel,Author permission,Technical review and reciprocal resource citation,Technical validation or partnership,No copying full guides or files
+3,blog-5khz-disk,Contact through a current public editorial channel,Author permission,Technical review of preservation content,Technical validation or citation,No republishing article content
+3,blog-florian-opus,Contact through a current public professional channel,Author permission,Internet-radio shutdown technical review,Technical validation or citation,No publishing historical credentials
+3,market-hifishark-o4hd,Create exact-model allowed alerts,None beyond platform terms,Aggregate supply condition and price monitoring,Monthly market trend,No seller profiles or off-platform solicitation

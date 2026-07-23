@@ -4,7 +4,6 @@ import {
   type EndpointProbe,
   type HttpMethod,
   type OliveModelCapabilities,
-  type NowPlayingSnapshot,
   type TransportResponse,
 } from "@olive-remote-lab/olive-client";
 import { LibraryView } from "./components/LibraryView";
@@ -17,9 +16,10 @@ import { MiniPlayer } from "./components/MiniPlayer";
 import { Icon } from "./components/Icons";
 import { useI18n } from "./i18n";
 import { appFetch, getLocalNetworkStatus, isNativeAndroid, isNativeApp, openLocalNetworkSettings, type LocalNetworkStatus } from "./nativeApi";
-import { TRACK_CHANGING_EVENT, TRACK_STARTING_EVENT, type TrackChangingDetail, type TrackStartingDetail } from "./playbackEvents";
 import { DEMO_TARGET, isDemoTarget } from "./demoOlive";
 import { clearDeviceCache } from "./deviceCache";
+import { PlaybackProvider } from "./playback/PlaybackProvider";
+import { LibraryCatalogSync } from "./components/LibraryCatalogSync";
 
 type Section = "Home" | "Library" | "Search" | "Playlists" | "Add Music" | "Lab" | "Settings";
 interface Device { host: string; port: number }
@@ -65,7 +65,7 @@ export function App() {
   const [host, setHost] = useState(initialDevice.host);
   const [port, setPort] = useState(initialDevice.port);
   const [connected, setConnected] = useState(Boolean(initialDevice.host));
-  const [, setModelProfile] = useState<OliveModelCapabilities | null>(null);
+  const [modelProfile, setModelProfile] = useState<OliveModelCapabilities | null>(null);
   const [savedDevices, setSavedDevices] = useState<SavedOlive[]>(() => {
     const stored = readStored<SavedOlive[]>(DEVICES_KEY, []);
     if (stored.length) return stored;
@@ -88,15 +88,45 @@ export function App() {
   const [requestError, setRequestError] = useState("");
   const [sending, setSending] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>(() => readStored<HistoryItem[]>(HISTORY_KEY, []));
-  const [nowPlaying, setNowPlaying] = useState<NowPlayingSnapshot | null>(null);
-  const [playbackTick, setPlaybackTick] = useState(() => Date.now());
+  const [sectionHistoryDepth, setSectionHistoryDepth] = useState(0);
+  const [hasContentBack, setHasContentBack] = useState(false);
   const automaticAttempted = useRef(false);
-  const playbackRefreshActive = useRef(false);
-  const pendingTrackChange = useRef<{ previousItemId: string; expiresAt: number } | null>(null);
   const lastNetworkAddress = useRef("");
+  const sectionHistory = useRef<Section[]>([]);
+  const contentBackHandler = useRef<(() => void) | null>(null);
 
   const target = useMemo(() => ({ host: host.trim(), port: Number(port) }), [host, port]);
   const demoActive = isDemoTarget(target);
+
+  const registerContentBack = useCallback((handler: (() => void) | null) => {
+    contentBackHandler.current = handler;
+    setHasContentBack(Boolean(handler));
+  }, []);
+
+  const navigate = useCallback((next: Section) => {
+    if (section === next) return;
+    sectionHistory.current = [...sectionHistory.current, section].slice(-30);
+    setSectionHistoryDepth(sectionHistory.current.length);
+    setSection(next);
+  }, [section]);
+
+  const replaceSection = useCallback((next: Section) => {
+    contentBackHandler.current = null;
+    setHasContentBack(false);
+    sectionHistory.current = [];
+    setSectionHistoryDepth(0);
+    setSection(next);
+  }, []);
+
+  const goBack = useCallback(() => {
+    if (contentBackHandler.current) {
+      contentBackHandler.current();
+      return;
+    }
+    const previous = sectionHistory.current.pop();
+    setSectionHistoryDepth(sectionHistory.current.length);
+    if (previous) setSection(previous);
+  }, []);
 
   const refreshLocalNetwork = useCallback(async () => {
     const incoming = await getLocalNetworkStatus();
@@ -108,37 +138,11 @@ export function App() {
       setConnected(false);
       setConnectionProblem("Your network changed. Rejoin the Wi-Fi used by your Olive, then reconnect.");
       setDiscovery({ candidates: [], ssdpResponses: 0 });
-      setSection("Lab");
+      replaceSection("Lab");
       setStatus("Home network changed");
     }
     return incoming;
-  }, [connected, demoActive]);
-
-  const refreshNowPlaying = useCallback(async () => {
-    if (!connected || !target.host || document.visibilityState !== "visible" || playbackRefreshActive.current) return;
-    playbackRefreshActive.current = true;
-    try {
-      const incoming = await api<Partial<NowPlayingSnapshot> & Pick<NowPlayingSnapshot, "itemId" | "metadata">>("/api/now-playing", { method: "POST", body: JSON.stringify(target) });
-      const data: NowPlayingSnapshot = {
-        itemId: incoming.itemId,
-        metadata: incoming.metadata,
-        transportState: incoming.transportState ?? (incoming.itemId ? "unknown" : "stopped"),
-        positionSeconds: incoming.positionSeconds ?? null,
-        durationSeconds: incoming.durationSeconds ?? incoming.metadata?.durationSeconds ?? null,
-        sampledAt: incoming.sampledAt ?? Date.now(),
-      };
-      const pending = pendingTrackChange.current;
-      if (pending && Date.now() < pending.expiresAt && data.itemId === pending.previousItemId) return;
-      if (pending && (data.itemId !== pending.previousItemId || Date.now() >= pending.expiresAt)) pendingTrackChange.current = null;
-      setNowPlaying((previous) => {
-        if (!previous || !data.itemId || previous.itemId !== data.itemId || data.positionSeconds !== null) return data;
-        if (previous.positionSeconds === null) return data;
-        const elapsed = previous.transportState === "playing" ? Math.max(0, (Date.now() - previous.sampledAt) / 1000) : 0;
-        return { ...data, positionSeconds: previous.positionSeconds + elapsed, sampledAt: Date.now() };
-      });
-    } catch { /* The connection indicator handles device availability. */ }
-    finally { playbackRefreshActive.current = false; }
-  }, [connected, target.host, target.port]);
+  }, [connected, demoActive, replaceSection]);
 
   useEffect(() => localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, 40))), [history]);
   useEffect(() => localStorage.setItem(DEVICES_KEY, JSON.stringify(savedDevices)), [savedDevices]);
@@ -172,65 +176,6 @@ export function App() {
     return () => window.clearInterval(retry);
   }, [connected, discovering, target.host, target.port]);
 
-  useEffect(() => {
-    if (!connected) { setNowPlaying(null); return; }
-    void refreshNowPlaying();
-    const poll = window.setInterval(() => void refreshNowPlaying(), 5_000);
-    const clock = window.setInterval(() => setPlaybackTick(Date.now()), 1_000);
-    const delayed: number[] = [];
-    const handleTrackStarting = (event: Event) => {
-      const { itemId, metadata } = (event as CustomEvent<TrackStartingDetail>).detail;
-      setNowPlaying({
-        itemId,
-        metadata,
-        transportState: "playing",
-        positionSeconds: 0,
-        durationSeconds: metadata.durationSeconds,
-        sampledAt: Date.now(),
-      });
-      for (const delay of [250, 1_250, 2_750]) delayed.push(window.setTimeout(() => void refreshNowPlaying(), delay));
-    };
-    const handleTrackChanging = (event: Event) => {
-      const { previousItemId } = (event as CustomEvent<TrackChangingDetail>).detail;
-      pendingTrackChange.current = { previousItemId, expiresAt: Date.now() + 4_500 };
-      setNowPlaying({
-        itemId: previousItemId,
-        metadata: {
-          id: previousItemId,
-          title: "Changing track…",
-          album: "",
-          artist: "",
-          genre: "",
-          artworkPath: "",
-          durationSeconds: null,
-          playCount: null,
-          rating: null,
-          raw: {},
-        },
-        transportState: "playing",
-        positionSeconds: null,
-        durationSeconds: null,
-        sampledAt: Date.now(),
-      });
-      for (const delay of [100, 700, 1_500, 2_600, 4_300]) delayed.push(window.setTimeout(() => void refreshNowPlaying(), delay));
-    };
-    const handlePlaybackChange = () => {
-      for (const delay of [120, 1_250, 2_750]) delayed.push(window.setTimeout(() => void refreshNowPlaying(), delay));
-    };
-    const handleVisibility = () => { if (document.visibilityState === "visible") void refreshNowPlaying(); };
-    window.addEventListener("olive-playback-changed", handlePlaybackChange);
-    window.addEventListener(TRACK_STARTING_EVENT, handleTrackStarting);
-    window.addEventListener(TRACK_CHANGING_EVENT, handleTrackChanging);
-    document.addEventListener("visibilitychange", handleVisibility);
-    return () => {
-      window.clearInterval(poll); window.clearInterval(clock); delayed.forEach(window.clearTimeout);
-      window.removeEventListener("olive-playback-changed", handlePlaybackChange);
-      window.removeEventListener(TRACK_STARTING_EVENT, handleTrackStarting);
-      window.removeEventListener(TRACK_CHANGING_EVENT, handleTrackChanging);
-      document.removeEventListener("visibilitychange", handleVisibility);
-    };
-  }, [connected, refreshNowPlaying]);
-
   async function autoConnect() {
     const savedDevice = initialDevice.host && ![80, 8163].includes(initialDevice.port)
       ? { ...initialDevice, port: 80 }
@@ -252,16 +197,18 @@ export function App() {
         const saved: SavedOlive = { ...device, name: isDemoTarget(device) ? "Preview Library" : existing?.name ?? `${baseName} · ${deviceSuffix(device.host)}` };
         return existing ? items.map((item) => deviceKey(item) === key ? saved : item) : [...items, saved];
       });
-      if (section === "Lab") setSection("Home");
+      if (section === "Lab") replaceSection("Home");
       return true;
-    } catch {
+    } catch (error) {
       setConnected(false); setModelProfile(null); setStatus("Looking for your Olive…");
+      setConnectionProblem(error instanceof Error ? error.message : "Your Olive was found, but its controller did not answer.");
       return false;
     }
   }
 
   function confirmDevice(device = target, suggestedName?: string) {
     if (!device.host || device.port < 1 || device.port > 65535) { setStatus("Enter a valid local IP and port."); return; }
+    setConnectionProblem("");
     setHost(device.host); setPort(device.port); setConnected(true);
     localStorage.setItem(DEVICE_KEY, JSON.stringify(device));
     setStatus(`Identifying ${device.host}:${device.port}…`);
@@ -271,7 +218,7 @@ export function App() {
   function switchDevice(key: string) {
     const device = savedDevices.find((item) => deviceKey(item) === key);
     if (!device || (deviceKey(target) === key && connected)) return;
-    setConnected(false); setNowPlaying(null); setHost(device.host); setPort(device.port); setStatus(`Connecting to ${device.name}…`);
+    setConnected(false); setHost(device.host); setPort(device.port); setStatus(`Connecting to ${device.name}…`);
     localStorage.setItem(DEVICE_KEY, JSON.stringify({ host: device.host, port: device.port }));
     void identifyDevice(device);
   }
@@ -282,9 +229,9 @@ export function App() {
     setSavedDevices((items) => items.filter((item) => deviceKey(item) !== key));
     void clearDeviceCache(device);
     if (deviceKey(target) !== key) return;
-    setConnected(false); setNowPlaying(null); setHost(""); setPort(80); setModelProfile(null);
+    setConnected(false); setHost(""); setPort(80); setModelProfile(null);
     localStorage.removeItem(DEVICE_KEY);
-    setStatus("Olive forgotten"); setSection("Lab");
+    setStatus("Olive forgotten"); replaceSection("Lab");
   }
 
   function startDemo() {
@@ -294,10 +241,10 @@ export function App() {
   }
 
   function exitDemo() {
-    setConnected(false); setNowPlaying(null); setHost(""); setPort(80); setModelProfile(null);
+    setConnected(false); setHost(""); setPort(80); setModelProfile(null);
     setSavedDevices((items) => items.filter((item) => !isDemoTarget(item)));
     localStorage.removeItem(DEVICE_KEY);
-    setStatus("Not connected"); setSection("Lab");
+    setStatus("Not connected"); replaceSection("Lab");
   }
 
   async function runProbe() {
@@ -361,32 +308,25 @@ export function App() {
   }
 
   const parsed = result ? parseResponseBody(result.body, result.headers["content-type"] ?? "") : null;
-  const liveNowPlaying = useMemo<NowPlayingSnapshot | null>(() => {
-    if (!nowPlaying || nowPlaying.positionSeconds === null || nowPlaying.transportState !== "playing") return nowPlaying;
-    const elapsed = Math.max(0, (playbackTick - nowPlaying.sampledAt) / 1000);
-    const positionSeconds = nowPlaying.durationSeconds === null
-      ? nowPlaying.positionSeconds + elapsed
-      : Math.min(nowPlaying.durationSeconds, nowPlaying.positionSeconds + elapsed);
-    return { ...nowPlaying, positionSeconds };
-  }, [nowPlaying, playbackTick]);
   const sectionLabel: Record<Section, string> = { Home: t("home"), Library: t("library"), Search: t("search"), Playlists: t("playlists"), "Add Music": t("addMusic"), Lab: "Find My Olive", Settings: t("settings") };
 
-  return <div className="app-shell">
+  return <PlaybackProvider connected={connected} target={target} volumeControlEnabled={demoActive || modelProfile?.model === "o4hd"} onStatus={setStatus}><div className="app-shell">
     <aside className="sidebar">
       <div className="brand"><img className="brand-mark" src="/icon.svg" alt="" /><div><strong>Olive Remote</strong></div></div>
-      <nav>{sections.map((item) => <button className={section === item ? "active" : ""} aria-current={section === item ? "page" : undefined} onClick={() => setSection(item)} key={item}><Icon name={navIcons[item]} />{sectionLabel[item]}</button>)}</nav>
+      <nav>{sections.map((item) => <button className={section === item ? "active" : ""} aria-current={section === item ? "page" : undefined} onClick={() => navigate(item)} key={item}><Icon name={navIcons[item]} />{sectionLabel[item]}</button>)}</nav>
     </aside>
 
     <main>
-      <header><h1>{sectionLabel[section]}</h1>{savedDevices.length > 1 ? <label className={`device-switcher ${connected ? "online" : ""}`}><i /><span className="sr-only">Active Olive</span><select value={deviceKey(target)} onChange={(event) => switchDevice(event.target.value)} aria-label="Active Olive">{savedDevices.map((device) => <option key={deviceKey(device)} value={deviceKey(device)}>{device.name}</option>)}</select></label> : section !== "Settings" && <div className={`connection-pill ${connected ? "online" : ""}`}><i />{connected ? t("connected") : status}</div>}</header>
+      <header><div className="header-leading">{(hasContentBack || sectionHistoryDepth > 0) && <button className="app-back" onClick={goBack} aria-label="Back"><Icon name="back" /><span>Back</span></button>}<h1>{sectionLabel[section]}</h1></div>{savedDevices.length > 1 ? <label className={`device-switcher ${connected ? "online" : ""}`}><i /><span className="sr-only">Active Olive</span><select value={deviceKey(target)} onChange={(event) => switchDevice(event.target.value)} aria-label="Active Olive">{savedDevices.map((device) => <option key={deviceKey(device)} value={deviceKey(device)}>{device.name}</option>)}</select></label> : section !== "Settings" && <div className={`connection-pill ${connected ? "online" : ""}`}><i />{connected ? t("connected") : status}</div>}</header>
       {demoActive && <div className="demo-banner" role="status"><span><strong>Preview library</strong> · fictional content</span><button onClick={exitDemo}>Use my Olive</button></div>}
+      <LibraryCatalogSync connected={connected} target={target} />
 
-      {section === "Home" ? <NowPlayingView connected={connected} target={target} onStatus={setStatus} nowPlaying={liveNowPlaying} />
-        : section === "Library" ? <LibraryView connected={connected} target={target} onStatus={setStatus} />
-        : section === "Search" ? <SearchView connected={connected} target={target} onStatus={setStatus} />
-        : section === "Playlists" ? <PlaylistsView connected={connected} target={target} onStatus={setStatus} />
+      {section === "Home" ? <NowPlayingView />
+        : section === "Library" ? <LibraryView connected={connected} target={target} onStatus={setStatus} onRegisterBack={registerContentBack} />
+        : section === "Search" ? <SearchView connected={connected} target={target} onStatus={setStatus} onRegisterBack={registerContentBack} />
+        : section === "Playlists" ? <PlaylistsView connected={connected} target={target} onStatus={setStatus} onRegisterBack={registerContentBack} />
         : section === "Add Music" ? <AddMusicView connected={connected} target={target} />
-        : section === "Settings" ? <SettingsView target={target} savedDevices={savedDevices} connected={connected} onSelect={switchDevice} onForget={forgetDevice} onOpenLab={() => setSection("Lab")} onExportDiagnostics={exportDiagnostics} />
+        : section === "Settings" ? <SettingsView target={target} savedDevices={savedDevices} connected={connected} onSelect={switchDevice} onForget={forgetDevice} onOpenLab={() => navigate("Lab")} onExportDiagnostics={exportDiagnostics} />
         : section !== "Lab" ? null : <>
         <section className="card find-olive-card">
           <div className="find-olive-copy"><span className="connection-eyebrow">LOCAL CONNECTION</span><h2>Find your Olive</h2><p>Olive Remote connects directly to your music server at home. No account or internet connection is required.</p></div>
@@ -429,6 +369,6 @@ export function App() {
         </div></details>}
       </>}
     </main>
-    {connected && section !== "Lab" && <MiniPlayer connected={connected} target={target} nowPlaying={liveNowPlaying} expanded={section === "Home"} onOpen={() => setSection("Home")} onToggle={() => setSection(section === "Home" ? "Library" : "Home")} onStatus={setStatus} />}
-  </div>;
+    {connected && section !== "Lab" && <MiniPlayer expanded={section === "Home"} onOpen={() => navigate("Home")} onToggle={() => navigate(section === "Home" ? "Library" : "Home")} />}
+  </div></PlaybackProvider>;
 }

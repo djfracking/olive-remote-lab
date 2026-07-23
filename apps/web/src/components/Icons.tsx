@@ -2,7 +2,7 @@ import type { ReactNode, SVGProps } from "react";
 
 type IconName =
   | "home" | "library" | "search" | "playlists" | "add" | "lab" | "settings"
-  | "previous" | "next" | "play" | "pause" | "playPause" | "stop" | "expand" | "collapse" | "speaker" | "device";
+  | "back" | "previous" | "next" | "play" | "pause" | "playPause" | "stop" | "expand" | "collapse" | "speaker" | "device";
 
 const paths: Record<IconName, ReactNode> = {
   home: <><path d="m3 11 9-8 9 8"/><path d="M5.5 9.5V21h13V9.5"/><path d="M9.5 21v-7h5v7"/></>,
@@ -12,6 +12,7 @@ const paths: Record<IconName, ReactNode> = {
   add: <><path d="M12 4v16M4 12h16"/></>,
   lab: <><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.75 3h10.5A2 2 0 0 0 19 18l-5-9V3"/><path d="M7.5 15h9"/></>,
   settings: <><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1V21h-4v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1-.4H3v-4h.09A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1V3h4v.09A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.12.37.33.7.6 1 .27.27.63.42 1 .4H21v4h-.09a1.7 1.7 0 0 0-1.51.6Z"/></>,
+  back: <path d="m15 18-6-6 6-6"/>,
   previous: <><path d="M6 5v14"/><path d="m18 6-9 6 9 6Z" fill="currentColor" stroke="none"/></>,
   next: <><path d="M18 5v14"/><path d="m6 6 9 6-9 6Z" fill="currentColor" stroke="none"/></>,
   play: <path d="m8 5 11 7-11 7Z" fill="currentColor" stroke="none"/>,

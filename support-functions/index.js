@@ -2,31 +2,58 @@ import crypto from "node:crypto";
 import { onRequest } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 import nodemailer from "nodemailer";
-import { buildSupportEmail, sanitizeSupportRequest, SupportInputError } from "./support.js";
+import { buildDiagnosticEmail, buildSupportEmail, MAX_SUPPORT_PAYLOAD_BYTES, resolveRateLimitAddress, sanitizeDiagnosticRequest, sanitizeSupportRequest, supportPayloadBytes, SupportInputError } from "./support.js";
 
 const smtpPassword = defineSecret("OLIVE_SUPPORT_SMTP_PASSWORD");
 const supportMailbox = defineSecret("OLIVE_SUPPORT_MAILBOX");
+const isFunctionsEmulator = process.env.FUNCTIONS_EMULATOR === "true";
 const allowedOrigins = new Set([
   "https://olive-remote-lab.web.app",
   "https://olive-remote-lab.firebaseapp.com",
 ]);
-const requestWindows = new Map();
+const emulatorOrigins = new Set([
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  "http://[::1]:3000",
+]);
+const clientRequestWindows = new Map();
+const globalRequestWindows = new Map();
 const rateLimitWindowMs = 60 * 60 * 1_000;
 const rateLimitMaximum = 5;
+const globalRateLimitMaximum = 30;
 
 function requestAddress(request) {
-  return String(request.headers["x-forwarded-for"] || request.ip || "unknown").split(",")[0].trim().slice(0, 80);
+  return resolveRateLimitAddress(request.headers["x-forwarded-for"], request.ip);
+}
+
+function purgeExpiredRateLimits(windows, now) {
+  for (const [storedKey, window] of windows) {
+    if (now - window.startedAt >= rateLimitWindowMs) windows.delete(storedKey);
+  }
+}
+
+function rateLimitAvailable(windows, key, maximum) {
+  return !windows.has(key) || windows.get(key).count < maximum;
+}
+
+function recordRateLimit(windows, key, now) {
+  const current = windows.get(key);
+  const next = current ? { ...current, count: current.count + 1 } : { startedAt: now, count: 1 };
+  windows.set(key, next);
+  if (windows.size > 5_000) {
+    while (windows.size > 5_000) windows.delete(windows.keys().next().value);
+  }
 }
 
 function withinRateLimit(request, now = Date.now()) {
-  const key = requestAddress(request);
-  const current = requestWindows.get(key);
-  const next = !current || now - current.startedAt >= rateLimitWindowMs ? { startedAt: now, count: 1 } : { ...current, count: current.count + 1 };
-  requestWindows.set(key, next);
-  if (requestWindows.size > 5_000) {
-    for (const [address, window] of requestWindows) if (now - window.startedAt >= rateLimitWindowMs) requestWindows.delete(address);
-  }
-  return next.count <= rateLimitMaximum;
+  const addressHash = crypto.createHash("sha256").update(requestAddress(request)).digest("hex");
+  purgeExpiredRateLimits(clientRequestWindows, now);
+  purgeExpiredRateLimits(globalRequestWindows, now);
+  if (!rateLimitAvailable(clientRequestWindows, addressHash, rateLimitMaximum)) return false;
+  if (!rateLimitAvailable(globalRequestWindows, "global", globalRateLimitMaximum)) return false;
+  recordRateLimit(clientRequestWindows, addressHash, now);
+  recordRateLimit(globalRequestWindows, "global", now);
+  return true;
 }
 
 export const submitOliveSupport = onRequest(
@@ -37,19 +64,28 @@ export const submitOliveSupport = onRequest(
     minInstances: 0,
     maxInstances: 2,
     concurrency: 20,
-    secrets: [smtpPassword, supportMailbox],
+    secrets: isFunctionsEmulator ? [] : [smtpPassword, supportMailbox],
   },
   async (request, response) => {
     response.set("Cache-Control", "no-store");
     response.set("X-Content-Type-Options", "nosniff");
-    const origin = request.get("origin");
-    if (origin && !allowedOrigins.has(origin)) {
-      response.status(403).json({ error: "Support requests must be sent from the Olive Remote support page." });
-      return;
-    }
     if (request.method !== "POST") {
       response.set("Allow", "POST");
       response.status(405).json({ error: "Method not allowed." });
+      return;
+    }
+    const origin = request.get("origin");
+    const emulatorOriginAllowed = isFunctionsEmulator && emulatorOrigins.has(origin);
+    if (!allowedOrigins.has(origin) && !emulatorOriginAllowed) {
+      response.status(403).json({ error: "Support requests must be sent from the Olive Remote support page." });
+      return;
+    }
+    if (!request.is("application/json")) {
+      response.status(415).json({ error: "Send the support request as JSON." });
+      return;
+    }
+    if (supportPayloadBytes(request.body) > MAX_SUPPORT_PAYLOAD_BYTES) {
+      response.status(413).json({ error: "The support request is too large." });
       return;
     }
     if (!withinRateLimit(request)) {
@@ -58,16 +94,22 @@ export const submitOliveSupport = onRequest(
     }
 
     try {
-      const input = sanitizeSupportRequest(request.body);
+      const isDiagnostic = request.body?.requestType === "diagnostic";
+      const input = isDiagnostic ? sanitizeDiagnosticRequest(request.body) : sanitizeSupportRequest(request.body);
       if (input.honeypot) {
         response.status(200).json({ ok: true });
+        return;
+      }
+      const requestId = crypto.randomUUID();
+      const mail = isDiagnostic ? buildDiagnosticEmail(input, requestId) : buildSupportEmail(input, requestId);
+      if (isFunctionsEmulator) {
+        console.info("Olive support emulator accepted a dry-run request.", { requestId, requestType: isDiagnostic ? "diagnostic" : "support" });
+        response.status(200).json({ ok: true, requestId, dryRun: true });
         return;
       }
       const mailbox = supportMailbox.value();
       const password = smtpPassword.value();
       if (!mailbox || !password) throw new Error("Support mail is not configured.");
-      const requestId = crypto.randomUUID();
-      const mail = buildSupportEmail(input, requestId);
       const transport = nodemailer.createTransport({
         host: "smtp.gmail.com",
         port: 465,

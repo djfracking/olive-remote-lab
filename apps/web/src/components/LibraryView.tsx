@@ -1,17 +1,26 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { MaestroBrowseRequest, MaestroTree, MaestroTreeNode, OliveDeviceTarget } from "@olive-remote-lab/olive-client";
 import { appFetch } from "../nativeApi";
 import { LibraryArtwork, LibrarySkeleton } from "./LibraryArtwork";
-import { announceTrackStarting } from "../playbackEvents";
 import { readDeviceCache, writeDeviceCache } from "../deviceCache";
+import { indexSearchTree } from "../searchIndex";
+import { usePlaybackActions } from "../playback/PlaybackProvider";
 
 interface LibraryViewProps {
   connected: boolean;
   target: OliveDeviceTarget;
   onStatus: (status: string) => void;
+  onRegisterBack?: (handler: (() => void) | null) => void;
 }
 
 interface Breadcrumb { title: string; tree: MaestroTree }
+
+const ALPHABET = ["#", ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"];
+
+function artistInitial(title: string) {
+  const first = title.trim().charAt(0).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+  return /^[A-Z]$/.test(first) ? first : "#";
+}
 
 async function post<T>(path: string, body: unknown): Promise<T> {
   const response = await appFetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -31,7 +40,7 @@ function browseType(node: MaestroTreeNode): MaestroBrowseRequest["type"] | null 
   return null;
 }
 
-export function LibraryView({ connected, target, onStatus }: LibraryViewProps) {
+export function LibraryView({ connected, target, onStatus, onRegisterBack }: LibraryViewProps) {
   const [tree, setTree] = useState<MaestroTree | null>(null);
   const [breadcrumbs, setBreadcrumbs] = useState<Breadcrumb[]>([]);
   const [loading, setLoading] = useState(false);
@@ -40,6 +49,7 @@ export function LibraryView({ connected, target, onStatus }: LibraryViewProps) {
   const [activeNode, setActiveNode] = useState<MaestroTreeNode | null>(null);
   const [playingId, setPlayingId] = useState("");
   const autoLoadedTarget = useRef("");
+  const { playTrack: playCanonicalTrack, enqueue } = usePlaybackActions();
 
   async function loadRoot() {
     if (!connected) return;
@@ -53,6 +63,7 @@ export function LibraryView({ connected, target, onStatus }: LibraryViewProps) {
       const result = await post<MaestroTree>("/api/library/navigation", target);
       setTree(result); setBreadcrumbs([]); setActiveNode(null); setPage(0);
       void writeDeviceCache(target, resource, result);
+      void indexSearchTree(target, result);
       onStatus(`${result.items.length} library sections available`);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Library unavailable."); }
     finally { setLoading(false); }
@@ -89,29 +100,32 @@ export function LibraryView({ connected, target, onStatus }: LibraryViewProps) {
       if (requestedPage === 0 && !cached) setBreadcrumbs((trail) => tree ? [...trail, { title: node.title, tree }] : trail);
       setTree(result); setActiveNode(node); setPage(requestedPage);
       void writeDeviceCache(target, resource, result);
+      void indexSearchTree(target, result);
       onStatus(`${node.title}: ${result.items.length} items loaded`);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not open this section."); }
     finally { setLoading(false); }
   }
 
-  function goBack() {
-    const previous = breadcrumbs[breadcrumbs.length - 1];
-    if (!previous) { void loadRoot(); return; }
-    setTree(previous.tree); setBreadcrumbs((trail) => trail.slice(0, -1)); setActiveNode(null); setPage(0); setError("");
-  }
+  const goBack = useCallback(() => {
+    setBreadcrumbs((trail) => {
+      const previous = trail.at(-1);
+      if (previous) setTree(previous.tree);
+      return previous ? trail.slice(0, -1) : trail;
+    });
+    setActiveNode(null); setPage(0); setError("");
+  }, []);
+
+  useEffect(() => {
+    onRegisterBack?.(breadcrumbs.length ? goBack : null);
+    return () => onRegisterBack?.(null);
+  }, [breadcrumbs.length, goBack, onRegisterBack]);
 
   async function playTrack(track: MaestroTreeNode) {
     setPlayingId(track.id); setError("");
     try {
       onStatus(`Starting ${track.title}…`);
-      const playbackIndex = track.userData.playbackIndex ? Number(track.userData.playbackIndex) : undefined;
-      const command = { action: "play" as const, itemId: track.id, ...(playbackIndex !== undefined ? { index: playbackIndex } : {}) };
-      announceTrackStarting(track);
-      const response = await appFetch("/api/playback", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ target, command }) });
-      const data = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(data.error ?? "Playback failed.");
-      onStatus(`Playing ${track.title}`);
-      window.dispatchEvent(new Event("olive-playback-changed"));
+      const context = (tree?.items ?? []).filter((item) => browseType(item) === "track" && item.id !== "tracks");
+      await playCanonicalTrack(track, context.length ? context : [track]);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Playback failed."); }
     finally { setPlayingId(""); }
   }
@@ -121,6 +135,16 @@ export function LibraryView({ connected, target, onStatus }: LibraryViewProps) {
   const total = tree?.totalItems ?? null;
   const activePageSize = activeNode && browseType(activeNode) === "track" && activeNode.id === "tracks" ? 64 : 21;
   const canNext = total !== null && (page + 1) * activePageSize < total;
+  const isArtistIndex = activeNode?.id === "artists" && browseType(activeNode) === "artists";
+  const artistGroups = isArtistIndex && tree ? ALPHABET.map((letter) => ({
+    letter,
+    items: tree.items.filter((item) => artistInitial(item.title) === letter),
+  })).filter((group) => group.items.length > 0) : [];
+  const availableArtistLetters = new Set(artistGroups.map((group) => group.letter));
+
+  function jumpToArtistLetter(letter: string) {
+    document.getElementById(`artist-section-${letter === "#" ? "other" : letter}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   return <section className="module-stack">
     <div className="content-toolbar">
@@ -129,7 +153,10 @@ export function LibraryView({ connected, target, onStatus }: LibraryViewProps) {
     </div>
     {error && <div className="error-box">{error}</div>}
     <div className="card library-panel" aria-busy={loading}>
-      {loading ? <LibrarySkeleton count={tree?.items.length ? Math.min(tree.items.length, 15) : 12} /> : tree?.items.length ? <div className="library-grid">{tree.items.map((item) => <button key={item.id} onClick={() => void openNode(item)}><LibraryArtwork target={target} item={item} fallback={browseType(item) === "track" ? "▶" : "♪"} /><span><strong>{item.title || "Untitled"}</strong>{playingId === item.id && <small>Starting…</small>}</span><i>›</i></button>)}</div> : <div className="empty">This section is empty.</div>}
+      {loading ? <LibrarySkeleton count={tree?.items.length ? Math.min(tree.items.length, 15) : 12} /> : tree?.items.length ? isArtistIndex ? <div className="artist-browser">
+        <div className="artist-sections">{artistGroups.map((group) => <section className="artist-section" id={`artist-section-${group.letter === "#" ? "other" : group.letter}`} key={group.letter} aria-labelledby={`artist-heading-${group.letter}`}><h2 id={`artist-heading-${group.letter}`}>{group.letter}</h2><div className="library-grid">{group.items.map((item) => <button key={item.id} onClick={() => void openNode(item)}><LibraryArtwork target={target} item={item} fallback="♪" /><span><strong>{item.title || "Untitled"}</strong></span><i>›</i></button>)}</div></section>)}</div>
+        <nav className="artist-index" aria-label="Jump to artist letter">{ALPHABET.map((letter) => <button key={letter} disabled={!availableArtistLetters.has(letter)} aria-label={`Jump to artists beginning with ${letter}`} onClick={() => jumpToArtistLetter(letter)}>{letter}</button>)}</nav>
+      </div> : <div className="library-grid">{tree.items.map((item) => <div className="library-item" key={item.id}><button onClick={() => void openNode(item)}><LibraryArtwork target={target} item={item} fallback={browseType(item) === "track" ? "▶" : "♪"} /><span><strong>{item.title || "Untitled"}</strong>{playingId === item.id && <small>Starting…</small>}</span><i>›</i></button>{browseType(item) === "track" && item.id !== "tracks" && <button className="queue-add" onClick={() => { enqueue(item); onStatus(`${item.title} added to queue`); }} aria-label={`Add ${item.title} to queue`}>+</button>}</div>)}</div> : <div className="empty">This section is empty.</div>}
       {total !== null && <div className="pagination"><span>{total.toLocaleString()} items · Page {page + 1}</span><div><button className="secondary" disabled={loading || page === 0 || !activeNode} onClick={() => activeNode && void openNode(activeNode, page - 1)}>Previous</button><button className="secondary" disabled={loading || !canNext || !activeNode} onClick={() => activeNode && void openNode(activeNode, page + 1)}>Next</button></div></div>}
     </div>
   </section>;

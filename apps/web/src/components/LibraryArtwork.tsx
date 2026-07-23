@@ -19,7 +19,7 @@ function loadPathCache(): void {
     const stored = JSON.parse(localStorage.getItem(ARTWORK_PATH_STORAGE_KEY) ?? "[]") as unknown;
     if (!Array.isArray(stored)) return;
     for (const entry of stored.slice(-MAX_STORED_PATHS)) {
-      if (Array.isArray(entry) && typeof entry[0] === "string" && typeof entry[1] === "string") {
+      if (Array.isArray(entry) && typeof entry[0] === "string" && typeof entry[1] === "string" && entry[1]) {
         artworkPathCache.set(entry[0], entry[1]);
       }
     }
@@ -68,7 +68,8 @@ async function itemArtworkPath(target: OliveDeviceTarget, itemId: string): Promi
   if (artworkPathCache.has(key)) return artworkPathCache.get(key) ?? "";
   const cached = metadataRequests.get(key);
   if (cached) return cached;
-  const request = scheduled(async () => {
+  let request: Promise<string>;
+  request = scheduled(async () => {
     const response = await appFetch("/api/library/item-metadata", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -78,16 +79,18 @@ async function itemArtworkPath(target: OliveDeviceTarget, itemId: string): Promi
     const metadata = await response.json() as { artworkPath?: unknown } | null;
     return typeof metadata?.artworkPath === "string" ? metadata.artworkPath : "";
   }).then((path) => {
-    rememberPath(key, path);
+    if (path) rememberPath(key, path);
     return path;
-  }).catch(() => "");
+  }).catch(() => "").finally(() => {
+    if (metadataRequests.get(key) === request) metadataRequests.delete(key);
+  });
   metadataRequests.set(key, request);
   return request;
 }
 
 export function LibraryArtwork({ target, item, fallback = "♪" }: { target: OliveDeviceTarget; item: MaestroTreeNode; fallback?: string }) {
   const root = useRef<HTMLSpanElement>(null);
-  const directPath = item.userData.albumart ?? item.userData.albumArt ?? item.userData.artwork ?? "";
+  const directPath = item.userData.albumart ?? item.userData.albumArt ?? item.userData.artwork ?? item.userData.artworkPath ?? item.userData.cover ?? "";
   const [path, setPath] = useState(directPath);
   const [failed, setFailed] = useState(false);
 

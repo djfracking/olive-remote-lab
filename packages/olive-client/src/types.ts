@@ -59,7 +59,8 @@ export interface MaestroBrowseRequest {
 
 export type PlaybackCommand =
   | { action: "play"; itemId: string; index?: number }
-  | { action: "pause" | "stop" | "previous" | "next" };
+  | { action: "seek"; positionSeconds: number }
+  | { action: "pause" | "stop" | "previous" | "next" | "volumeDown" | "mute" | "volumeUp" };
 
 export type LibrarySearchScope = "albums" | "artists" | "genres" | "tracks" | "playlists";
 

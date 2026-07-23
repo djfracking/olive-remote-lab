@@ -1,0 +1,17 @@
+id,index_name,url_pattern,purpose
+olive-us-2012,CC-MAIN-2012,olive.us/*,First-party products support reviews retailers and customer-story URLs
+olivehd-2012,CC-MAIN-2012,olivehd.com/*,First-party HD product support dealer review and campaign URLs
+downloads-2012,CC-MAIN-2012,downloads.olive.us/*,Manual brochure feature-guide recovery and download filenames
+olivehifi-2012,CC-MAIN-2012,olivehifi.com/*,Historical official product dealer and support pages
+myoliveone-2012,CC-MAIN-2012,myoliveone.com/*,Launch-era Olive ONE product and campaign pages
+olive-us-2017,CC-MAIN-2017-30,olive.us/*,Late first-party support and shutdown-era pages
+downloads-2017,CC-MAIN-2017-30,downloads.olive.us/*,Historical download and recovery filenames
+olivehifi-2017,CC-MAIN-2017-30,olivehifi.com/*,Historical official product dealer and support pages
+olivehd-2017,CC-MAIN-2017-30,olivehd.com/*,Historical HD product and support pages
+myoliveone-2017,CC-MAIN-2017-30,myoliveone.com/*,Olive ONE product support and software pages
+zendesk-2017,CC-MAIN-2017-30,olivemediainc.zendesk.com/*,Former public support knowledge base URLs
+olive-us-2018,CC-MAIN-2018-34,olive.us/*,Shutdown-era official pages
+downloads-2018,CC-MAIN-2018-34,downloads.olive.us/*,Shutdown-era download filenames
+olivehifi-2018,CC-MAIN-2018-34,olivehifi.com/*,Shutdown-era official pages
+myoliveone-2018,CC-MAIN-2018-34,myoliveone.com/*,Shutdown-era Olive ONE pages
+zendesk-2018,CC-MAIN-2018-34,olivemediainc.zendesk.com/*,Shutdown-era public support URLs

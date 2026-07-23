@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { MaestroTree, MaestroTreeNode, OliveDeviceTarget } from "@olive-remote-lab/olive-client";
 import { appFetch } from "../nativeApi";
 import { LibraryArtwork } from "./LibraryArtwork";
-import { announceTrackStarting } from "../playbackEvents";
 import { readDeviceCache, writeDeviceCache } from "../deviceCache";
+import { usePlaybackActions } from "../playback/PlaybackProvider";
 
-interface Props { connected: boolean; target: OliveDeviceTarget; onStatus: (status: string) => void }
+interface Props { connected: boolean; target: OliveDeviceTarget; onStatus: (status: string) => void; onRegisterBack?: (handler: (() => void) | null) => void }
 
 async function post<T>(path: string, body: unknown): Promise<T> {
   const response = await appFetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -14,7 +14,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return data;
 }
 
-export function PlaylistsView({ connected, target, onStatus }: Props) {
+export function PlaylistsView({ connected, target, onStatus, onRegisterBack }: Props) {
   const [playlists, setPlaylists] = useState<MaestroTree | null>(null);
   const [tracks, setTracks] = useState<MaestroTree | null>(null);
   const [active, setActive] = useState<MaestroTreeNode | null>(null);
@@ -22,6 +22,7 @@ export function PlaylistsView({ connected, target, onStatus }: Props) {
   const [error, setError] = useState("");
   const [playingId, setPlayingId] = useState("");
   const loadedTarget = useRef("");
+  const { playTrack } = usePlaybackActions();
 
   async function loadPlaylists() {
     if (!connected) return;
@@ -59,20 +60,23 @@ export function PlaylistsView({ connected, target, onStatus }: Props) {
   async function play(item: MaestroTreeNode) {
     setPlayingId(item.id); setError("");
     try {
-      const playbackIndex = item.userData.playbackIndex ? Number(item.userData.playbackIndex) : undefined;
-      announceTrackStarting(item);
-      await post("/api/playback", { target, command: { action: "play", itemId: item.id, ...(playbackIndex !== undefined ? { index: playbackIndex } : {}) } });
-      onStatus(`Playing ${item.title}`);
-      window.dispatchEvent(new Event("olive-playback-changed"));
+      await playTrack(item, tracks?.items ?? [item]);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Playback failed."); }
     finally { setPlayingId(""); }
   }
+
+  const goBack = useCallback(() => { setActive(null); setTracks(null); setError(""); }, []);
+
+  useEffect(() => {
+    onRegisterBack?.(active ? goBack : null);
+    return () => onRegisterBack?.(null);
+  }, [active, goBack, onRegisterBack]);
 
   if (!connected) return <section className="card module-empty"><h2>Olive not connected</h2><p>Open Settings to connect your Olive.</p></section>;
   const items = tracks?.items ?? playlists?.items ?? [];
 
   return <section className="module-stack">
-    <div className="content-toolbar">{active ? <h2>{active.title}</h2> : <span />}<div className="toolbar-actions">{active && <button className="secondary" onClick={() => { setActive(null); setTracks(null); }}>Back</button>}<button className="secondary" onClick={() => void loadPlaylists()} disabled={loading}>Refresh</button></div></div>
+    <div className="content-toolbar">{active ? <h2>{active.title}</h2> : <span />}<div className="toolbar-actions">{active && <button className="secondary" onClick={goBack}>Back</button>}<button className="secondary" onClick={() => void loadPlaylists()} disabled={loading}>Refresh</button></div></div>
     {error && <div className="error-box">{error}</div>}
     <div className="card library-panel">{loading ? <div className="module-loading"><span className="spinner" />Loading…</div> : items.length ? <div className="library-grid">{items.map((item) => <button key={item.id} onClick={() => active ? void play(item) : void openPlaylist(item)}><LibraryArtwork target={target} item={item} fallback={active ? "▶" : "≡"} /><span><strong>{item.title || "Untitled"}</strong>{active ? playingId === item.id && <small>Starting…</small> : (item.childCount ?? 0) > 0 && <small>{item.childCount} tracks</small>}</span><i>›</i></button>)}</div> : <div className="empty">No playlists found.</div>}</div>
   </section>;

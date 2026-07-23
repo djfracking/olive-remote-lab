@@ -19,6 +19,9 @@
     "android:release": "npm run build -w @olive-remote-lab/olive-client && npm run android:release -w @olive-remote-lab/web",
     "ios:build": "npm run build -w @olive-remote-lab/olive-client && npm run ios:build -w @olive-remote-lab/web",
     "ios:archive": "npm run build -w @olive-remote-lab/olive-client && npm run ios:archive -w @olive-remote-lab/web",
+    "research:owners": "node scripts/collect-owner-intelligence.mjs",
+    "site:check": "node scripts/validate-public-site.mjs && npm run lint -w @olive-remote-lab/support-functions && npm test -w @olive-remote-lab/support-functions",
+    "site:dev": "firebase emulators:start --only hosting,functions",
     "site:deploy": "firebase deploy --only functions:support,hosting"
   },
   "devDependencies": {

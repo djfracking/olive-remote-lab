@@ -1,6 +1,7 @@
 import UIKit
 import Capacitor
 import Darwin
+import MediaPlayer
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -53,6 +54,269 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 class ViewController: CAPBridgeViewController {
     override func capacitorDidLoad() {
         bridge?.registerPluginInstance(OliveDiscoveryPlugin())
+        bridge?.registerPluginInstance(OlivePlaybackPlugin())
+    }
+}
+
+@objc(OlivePlaybackPlugin)
+public class OlivePlaybackPlugin: CAPPlugin, CAPBridgedPlugin {
+    public let identifier = "OlivePlaybackPlugin"
+    public let jsName = "OlivePlayback"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "update", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "clear", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "acknowledge", returnType: CAPPluginReturnPromise),
+    ]
+
+    private var host = ""
+    private var port = 80
+    private var state: MPNowPlayingPlaybackState = .stopped
+    private var position = 0.0
+    private var duration = 0.0
+    private var artworkToken = UUID()
+    private var artworkURL = ""
+    private var cachedArtwork: MPMediaItemArtwork?
+    private var commandTargets: [(MPRemoteCommand, Any)] = []
+    private var pendingCommands = Set<String>()
+
+    public override func load() {
+        super.load()
+        DispatchQueue.main.async { [weak self] in self?.configureCommands() }
+    }
+
+    @objc public func update(_ call: CAPPluginCall) {
+        guard let target = call.getObject("target"),
+              let incomingHost = target["host"] as? String,
+              Self.isPrivateHost(incomingHost) else {
+            call.reject("A private Olive address is required")
+            return
+        }
+        let incomingPort = target["port"] as? Int ?? 80
+        guard (1...65535).contains(incomingPort) else {
+            call.reject("A valid Olive port is required")
+            return
+        }
+
+        host = incomingHost
+        port = incomingPort
+        position = max(0, call.getDouble("positionSeconds") ?? 0)
+        duration = max(0, call.getDouble("durationSeconds") ?? 0)
+        let incomingState = call.getString("state") ?? "unknown"
+        state = incomingState == "playing" ? .playing : incomingState == "paused" ? .paused : .stopped
+        let sampledAt = call.getDouble("sampledAt") ?? Date().timeIntervalSince1970 * 1_000
+        if state == .playing {
+            position += max(0, Date().timeIntervalSince1970 - sampledAt / 1_000)
+            if duration > 0 { position = min(duration, position) }
+        }
+
+        let incomingArtworkURL = call.getString("artworkUrl") ?? ""
+        var info: [String: Any] = [
+            MPMediaItemPropertyTitle: call.getString("title") ?? "Playing on Olive",
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: position,
+            MPNowPlayingInfoPropertyPlaybackRate: state == .playing ? 1.0 : 0.0,
+            MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0,
+            MPNowPlayingInfoPropertyExternalContentIdentifier: call.getString("itemId") ?? "",
+            MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
+        ]
+        if let artist = call.getString("artist"), !artist.isEmpty { info[MPMediaItemPropertyArtist] = artist }
+        if let album = call.getString("album"), !album.isEmpty { info[MPMediaItemPropertyAlbumTitle] = album }
+        if duration > 0 { info[MPMediaItemPropertyPlaybackDuration] = duration }
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            let artworkChanged = self.artworkURL != incomingArtworkURL
+            if artworkChanged {
+                self.artworkURL = incomingArtworkURL
+                self.cachedArtwork = nil
+                self.artworkToken = UUID()
+            }
+            if let artwork = self.cachedArtwork { info[MPMediaItemPropertyArtwork] = artwork }
+            UIApplication.shared.beginReceivingRemoteControlEvents()
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+            MPNowPlayingInfoCenter.default().playbackState = self.state
+            self.updateCommandAvailability()
+            if artworkChanged && !incomingArtworkURL.isEmpty {
+                self.loadArtwork(incomingArtworkURL, token: self.artworkToken)
+            }
+            call.resolve()
+        }
+    }
+
+    @objc public func clear(_ call: CAPPluginCall) {
+        host = ""
+        state = .stopped
+        position = 0
+        duration = 0
+        artworkToken = UUID()
+        DispatchQueue.main.async {
+            self.pendingCommands.removeAll()
+            self.artworkURL = ""
+            self.cachedArtwork = nil
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+            MPNowPlayingInfoCenter.default().playbackState = .stopped
+            UIApplication.shared.endReceivingRemoteControlEvents()
+            call.resolve()
+        }
+    }
+
+    @objc public func acknowledge(_ call: CAPPluginCall) {
+        guard let id = call.getString("id"), !id.isEmpty else {
+            call.reject("A command id is required")
+            return
+        }
+        DispatchQueue.main.async {
+            self.pendingCommands.remove(id)
+            call.resolve()
+        }
+    }
+
+    private func configureCommands() {
+        guard commandTargets.isEmpty else { return }
+        let center = MPRemoteCommandCenter.shared()
+        add(center.playCommand) { [weak self] _ in self?.dispatch("toggle") ?? .commandFailed }
+        add(center.pauseCommand) { [weak self] _ in self?.dispatch("toggle") ?? .commandFailed }
+        add(center.togglePlayPauseCommand) { [weak self] _ in self?.dispatch("toggle") ?? .commandFailed }
+        add(center.previousTrackCommand) { [weak self] _ in self?.dispatch("previous") ?? .commandFailed }
+        add(center.nextTrackCommand) { [weak self] _ in self?.dispatch("next") ?? .commandFailed }
+        add(center.stopCommand) { [weak self] _ in self?.dispatch("stop") ?? .commandFailed }
+        add(center.changePlaybackPositionCommand) { [weak self] event in
+            guard let self, let seek = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
+            guard seek.positionTime.isFinite, seek.positionTime >= 0 else { return .commandFailed }
+            return self.dispatch("seek", position: seek.positionTime)
+        }
+        updateCommandAvailability()
+    }
+
+    private func add(_ command: MPRemoteCommand, handler: @escaping (MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus) {
+        let target = command.addTarget(handler: handler)
+        commandTargets.append((command, target))
+    }
+
+    private func updateCommandAvailability() {
+        let configured = !host.isEmpty
+        let center = MPRemoteCommandCenter.shared()
+        center.playCommand.isEnabled = configured
+        center.pauseCommand.isEnabled = configured
+        center.togglePlayPauseCommand.isEnabled = configured
+        center.previousTrackCommand.isEnabled = configured
+        center.nextTrackCommand.isEnabled = configured
+        center.stopCommand.isEnabled = configured
+        center.changePlaybackPositionCommand.isEnabled = configured && duration > 0
+    }
+
+    private func dispatch(_ action: String, position: Double? = nil) -> MPRemoteCommandHandlerStatus {
+        guard !host.isEmpty else { return .noSuchContent }
+        let id = UUID().uuidString
+        pendingCommands.insert(id)
+        var payload: [String: Any] = ["id": id, "action": action]
+        if let position { payload["positionSeconds"] = position }
+        notifyListeners("command", data: payload)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+            guard let self, self.pendingCommands.remove(id) != nil else { return }
+            self.performFallback(action: action, position: position)
+        }
+        return .success
+    }
+
+    private func performFallback(action: String, position incomingPosition: Double?) {
+        let nativeAction = action == "toggle" ? "pause" : action
+        if action == "toggle" {
+            state = state == .playing ? .paused : .playing
+        } else if action == "stop" {
+            state = .stopped
+            position = 0
+        } else if action == "seek", let incomingPosition {
+            position = duration > 0 ? min(duration, max(0, incomingPosition)) : max(0, incomingPosition)
+        } else {
+            position = 0
+        }
+        updatePublishedState()
+        perform(action: nativeAction, position: action == "seek" ? position : nil)
+    }
+
+    private func updatePublishedState() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+            info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = self.position
+            info[MPNowPlayingInfoPropertyPlaybackRate] = self.state == .playing ? 1.0 : 0.0
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+            MPNowPlayingInfoCenter.default().playbackState = self.state
+        }
+    }
+
+    private func perform(action: String, position: Double? = nil) {
+        let currentHost = host
+        let ports = [port, 80, 8163].reduce(into: [Int]()) { values, candidate in
+            if !values.contains(candidate) { values.append(candidate) }
+        }
+        tryRequest(action: action, position: position, host: currentHost, ports: ports, index: 0)
+    }
+
+    private func tryRequest(action: String, position: Double?, host: String, ports: [Int], index: Int) {
+        guard index < ports.count, let url = Self.commandURL(action: action, position: position, host: host, port: ports[index]) else { return }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 5
+        URLSession.shared.dataTask(with: request) { [weak self] _, response, _ in
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if !(200..<400).contains(status) {
+                self?.tryRequest(action: action, position: position, host: host, ports: ports, index: index + 1)
+            }
+        }.resume()
+    }
+
+    private static func commandURL(action: String, position: Double?, host: String, port: Int) -> URL? {
+        var components = URLComponents()
+        components.scheme = "http"
+        components.host = host
+        components.port = port
+        components.path = "/includes/ajax/a_executeOperation.php"
+        switch action {
+        case "pause":
+            components.queryItems = [
+                URLQueryItem(name: "action", value: "controlPlayer"),
+                URLQueryItem(name: "root", value: "null"),
+                URLQueryItem(name: "upnpid", value: "null"),
+                URLQueryItem(name: "sortCrit", value: "+upnp:originalTrackNumber"),
+                URLQueryItem(name: "index", value: "0"),
+            ]
+        case "stop":
+            components.queryItems = [URLQueryItem(name: "action", value: "controlPlayer"), URLQueryItem(name: "id", value: "stop")]
+        case "previous": components.queryItems = [URLQueryItem(name: "action", value: "left_skip")]
+        case "next": components.queryItems = [URLQueryItem(name: "action", value: "right_skip")]
+        case "seek":
+            let seconds = max(0, Int(position ?? 0))
+            let time = String(format: "%02d:%02d:%02d", seconds / 3600, seconds % 3600 / 60, seconds % 60)
+            components.queryItems = [URLQueryItem(name: "action", value: "seek"), URLQueryItem(name: "unit", value: "REL_TIME"), URLQueryItem(name: "target", value: time)]
+        default: return nil
+        }
+        return components.url
+    }
+
+    private func loadArtwork(_ value: String, token: UUID) {
+        guard let url = URL(string: value), url.scheme == "http", Self.isPrivateHost(url.host ?? "") else { return }
+        URLSession.shared.dataTask(with: url) { [weak self] data, response, _ in
+            guard let self, self.artworkToken == token,
+                  let response = response as? HTTPURLResponse,
+                  response.statusCode == 200,
+                  let data, data.count <= 8 * 1024 * 1024,
+                  let image = UIImage(data: data) else { return }
+            let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+            DispatchQueue.main.async {
+                guard self.artworkToken == token else { return }
+                self.cachedArtwork = artwork
+                var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+                info[MPMediaItemPropertyArtwork] = artwork
+                MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+            }
+        }.resume()
+    }
+
+    private static func isPrivateHost(_ value: String) -> Bool {
+        if value.lowercased().hasSuffix(".local") { return true }
+        let parts = value.split(separator: ".").compactMap { Int($0) }
+        guard parts.count == 4, parts.allSatisfy({ (0...255).contains($0) }) else { return false }
+        return parts[0] == 10 || parts[0] == 127 || (parts[0] == 169 && parts[1] == 254) || (parts[0] == 192 && parts[1] == 168) || (parts[0] == 172 && (16...31).contains(parts[1]))
     }
 }
 

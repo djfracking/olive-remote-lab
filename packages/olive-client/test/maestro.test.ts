@@ -85,4 +85,11 @@ describe("Maestro response parsing", () => {
     const result = parseMaestroTrackList('{"0":{"id":"7","title":"Song","isDir":"0"},"1":{"id":"8","title":"Next","isDir":"0"},"startindex":"64","itemsReturned":"2"}');
     expect(result.items.map((item) => item.userData.playbackIndex)).toEqual(["65", "66"]);
   });
+
+  it("preserves inline artist, album, artwork and duration from track lists", () => {
+    const result = parseMaestroTrackList('{"0":{"id":"7","title":"Song","isDir":"0","artist":"Ada &amp; Ben","album":"Green","albumart":"/art.jpg","duration":"4:05"}}');
+    expect(result.items[0]?.userData).toMatchObject({
+      artist: "Ada & Ben", album: "Green", albumart: "/art.jpg", duration: "4:05",
+    });
+  });
 });

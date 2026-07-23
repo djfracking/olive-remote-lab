@@ -15,8 +15,7 @@
     "ignore": [
       "firebase.json",
       "**/.*",
-      "**/node_modules/**",
-      "downloads/**"
+      "**/node_modules/**"
     ],
     "cleanUrls": true,
     "trailingSlash": false,
@@ -38,7 +37,7 @@
         ]
       },
       {
-        "source": "**/*.@(css|svg)",
+        "source": "**/*.@(css|js|svg)",
         "headers": [
           { "key": "Cache-Control", "value": "public,max-age=86400" }
         ]
@@ -53,5 +52,18 @@
         ]
       }
     ]
+  },
+  "emulators": {
+    "hosting": {
+      "host": "127.0.0.1",
+      "port": 3000
+    },
+    "functions": {
+      "host": "127.0.0.1",
+      "port": 5001
+    },
+    "ui": {
+      "enabled": false
+    }
   }
 }

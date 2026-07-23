@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en" data-default-source="site-waking-up">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b0e0b" />
+    <meta name="description" content="A preservation-first decision tree for an Olive O4HD stuck on Waking Up or System Starting Up. Separate display, network, and possible storage symptoms before repair." />
+    <meta name="robots" content="index,follow,max-image-preview:large" />
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="Olive O4HD stuck on Waking Up · Safe startup guide" />
+    <meta property="og:description" content="Check the least destructive possibilities first and protect the library before reset, firmware, or disk work." />
+    <meta property="og:url" content="https://olive-remote-lab.web.app/help/olive-4hd-stuck-waking-up" />
+    <link rel="canonical" href="https://olive-remote-lab.web.app/help/olive-4hd-stuck-waking-up" />
+    <title>Olive O4HD stuck on Waking Up · Safe startup guide</title>
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css?v=20260718-3" />
+    <script src="/attribution.js?v=20260718-3" defer></script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Should I factory-reset an Olive O4HD stuck on Waking Up?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Not as a first step. A reset, reinstall, initialization, or unverified firmware change may complicate library preservation. First record the symptom and determine whether the server is visible on the local network." }
+          },
+          {
+            "@type": "Question",
+            "name": "Can Olive Remote bypass a frozen O4HD screen?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Possibly only when the underlying O4HD has completed startup and remains reachable on the network. The remote cannot fix a server that has not booted or repair failed display hardware." }
+          },
+          {
+            "@type": "Question",
+            "name": "What if the O4HD clicks, restarts repeatedly, or disappears from the network?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Stop repeated power cycles and avoid writing to the original storage. If the library matters, consult a qualified data-recovery or electronics professional about owner-authorized, read-only imaging and hardware diagnosis." }
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <header class="nav">
+      <a class="brand" href="/" aria-label="Olive Remote home"><img src="/icon.svg" width="42" height="42" style="border-radius:11px" alt="" /> Olive Remote</a>
+      <nav aria-label="Main navigation"><a href="/olive-4hd">O4HD help</a><a href="/help/olive-remote-app-replacement">Remote app</a><a href="/help/olive-library-export-recovery">Library safety</a><a class="nav-cta" href="/diagnostic?source=site-waking-up" data-source-link>Check my Olive</a></nav>
+    </header>
+
+    <main>
+      <article class="resource-article">
+        <header class="resource-article-header">
+          <div class="eyebrow"><i></i> O4HD startup guide · Preservation first</div>
+          <h1>Stuck on<br /><em>“Waking Up”?</em></h1>
+          <p class="lead">That message does not identify a single failed part. Before resetting firmware or touching the disk, separate a display problem from a network problem and a server that never completes startup.</p>
+          <div class="actions"><a class="primary" href="#decision-tree">Start the decision tree</a><a class="secondary" href="/diagnostic?source=site-waking-up" data-source-link>Send device state</a></div>
+          <aside class="trust-alert"><strong>Protect the library first.</strong> Do not factory-reset, initialize, format, reinstall, or apply an unverified firmware image while the only copy of your music may be on the server.</aside>
+        </header>
+
+        <section class="resource-section" id="decision-tree" aria-labelledby="decision-heading">
+          <span class="label">DECISION TREE</span>
+          <h2 id="decision-heading">Use the least destructive checks first.</h2>
+          <ol class="decision-steps">
+            <li>
+              <span>1</span>
+              <div><h3>Record what you see and hear</h3><p>Photograph the exact screen message. Note whether it stays unchanged, eventually reaches the normal interface, restarts in a loop, or is accompanied by repeated clicking or unusual drive noise. Do not keep power-cycling a device that makes abnormal mechanical sounds.</p></div>
+            </li>
+            <li>
+              <span>2</span>
+              <div><h3>Check the simple network path</h3><p>Connect the O4HD and your phone or computer to the same main home router. Prefer Ethernet for this check. Turn off a VPN and avoid guest Wi-Fi, which commonly blocks devices from seeing one another. Look for an Olive entry in the router’s connected-device list, but do not publish or submit its IP address.</p></div>
+            </li>
+            <li>
+              <span>3</span>
+              <div><h3>If it is visible on the network</h3><p>The server may have completed more of startup than the display suggests. A local remote can be tested only at this point. Local connection and core library, search, Now Playing, and front-panel interfaces were tested on physical O4HD hardware, but behavior may vary by firmware and the remote cannot diagnose or repair the screen itself.</p><a href="/help/olive-remote-app-replacement?source=site-waking-up" data-source-link>Check the local remote path →</a></div>
+            </li>
+            <li>
+              <span>4</span>
+              <div><h3>If it is not visible</h3><p>Confirm the router port and Ethernet cable with another device if practical, then stop. A machine that remains absent, loops, or produces unusual noises needs hardware diagnosis; repeatedly restarting it can make a marginal disk worse.</p></div>
+            </li>
+            <li>
+              <span>5</span>
+              <div><h3>Choose the next safe path</h3><p>If the library exists elsewhere, a qualified electronics technician can assess power, display, board, and storage faults. If this server holds the only copy, tell the technician that preservation comes first and ask about an owner-authorized, read-only image before repairs that write to the original disk.</p><a href="/help/olive-library-export-recovery?source=site-waking-up" data-source-link>Read the library preservation guide →</a></div>
+            </li>
+          </ol>
+        </section>
+
+        <section class="resource-section">
+          <div class="decision-grid">
+            <article class="decision-card positive"><span class="label">LOW-RISK CHECKS</span><h3>Reasonable now</h3><ul><li>Record the exact message and behavior.</li><li>Check one known-good Ethernet cable and router port.</li><li>Use the main home network with VPN off.</li><li>Ask whether the router sees the server.</li><li>Preserve any existing external backup.</li></ul></article>
+            <article class="decision-card caution"><span class="label">STOP BEFORE THESE</span><h3>Potentially destructive</h3><ul><li>Factory reset or disk initialization.</li><li>Repeated forced shutdowns and restarts.</li><li>Unknown firmware or recovery images.</li><li>Running repair utilities against the original disk.</li><li>Opening hardware without the right experience.</li></ul></article>
+          </div>
+        </section>
+
+        <section class="resource-section trust-boundary">
+          <span class="label">PRODUCT BOUNDARY</span>
+          <h2>A remote is not a hardware repair.</h2>
+          <p>Olive Remote can be useful only if the O4HD is running and exposes the locally tested interfaces for its firmware. It cannot make a non-booting unit start, repair a failed display or disk, recover files, or prove which component failed. Volume, queue reading or reordering, playlist editing, metadata editing, destructive library operations, and device settings are not verified.</p>
+        </section>
+
+        <section class="resource-section" id="sources">
+          <span class="label">EVIDENCE AND OWNER REPORTS</span><h2>Sources behind the triage path.</h2>
+          <ul class="source-list">
+            <li><a href="https://forums.whathifi.com/threads/olive-4hd.128199/">What Hi-Fi · O4HD stuck on Waking Up</a><small>A direct public owner report that illustrates the symptom without proving a single root cause.</small></li>
+            <li><a href="https://www.5khz.com/2015/02/01/soliving-issues-with-the-olive-o4hd-display/">5 kHz · O4HD display investigation</a><small>Independent technical history covering frozen or partial displays and the display subsystem.</small></li>
+            <li><a href="https://www.5khz.com/2014/09/09/troubleshooting-an-olive-o4hd-and-replacing-the-hard-disk/">5 kHz · O4HD disk troubleshooting</a><small>Independent repair history supporting the preservation-first warning around the original disk.</small></li>
+            <li><a href="https://www.lydo.nl/download/Olive/Backup%20Exporter/Olive-Backup-Exporter.pdf">Lydo · Olive Backup Exporter guide</a><small>Unofficial recovery/export reference; linked for research context, not as a guaranteed procedure.</small></li>
+          </ul>
+        </section>
+
+        <section class="resource-section resource-faq" aria-labelledby="faq-heading">
+          <span class="label">COMMON QUESTIONS</span><h2 id="faq-heading">Startup questions</h2>
+          <details><summary>Should I factory-reset it?</summary><p>Not as a first step. First preserve evidence, determine whether the server is visible locally, and consider the value and uniqueness of the library.</p></details>
+          <details><summary>Can the remote bypass the frozen screen?</summary><p>Only when the underlying O4HD has actually started and remains reachable. It cannot bypass an incomplete boot or repair the display.</p></details>
+          <details><summary>What do clicking, looping, or repeated disappearance mean?</summary><p>They justify stopping repeated power cycles and getting qualified help. Those symptoms do not establish a specific failed part, but further writes or restarts may increase risk.</p></details>
+          <details><summary>Do these instructions apply to Olive ONE?</summary><p>No. Olive ONE is a separate, unverified platform. This page is specifically a conservative O4HD triage guide.</p></details>
+        </section>
+
+        <section class="resource-section resource-cta">
+          <span class="label">TWO-MINUTE CHECK</span><h2>Send the state, not private network data.</h2><p>Tell us the model, boot behavior, network visibility, and main issue. Do not submit an IP address, serial number, or library contents.</p>
+          <div class="actions"><a class="primary" href="/diagnostic?source=site-waking-up" data-source-link>Start diagnostic</a><a class="secondary" href="/olive-4hd">All O4HD help</a></div>
+        </section>
+      </article>
+    </main>
+
+    <footer><span>Olive Remote · 2026</span><span>Independent project · Information is not a substitute for qualified hardware or data-recovery advice</span><a href="/privacy">Privacy</a></footer>
+  </body>
+</html>

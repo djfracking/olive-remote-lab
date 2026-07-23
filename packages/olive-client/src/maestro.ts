@@ -108,14 +108,21 @@ export function parseMaestroTrackList(body: string): MaestroTree {
     if (!value || typeof value !== "object" || Array.isArray(value)) continue;
     const item = value as Record<string, unknown>;
     if (typeof item.id !== "string" || typeof item.title !== "string") continue;
+    const userData: Record<string, string> = {
+      type: item.isDir === true || item.isDir === "1" ? "compilation" : "track",
+      ...(/^[0-9]+$/.test(entryKey) ? { playbackIndex: String(Math.max(0, startIndex) + Number(entryKey) + 1) } : {}),
+    };
+    for (const key of [
+      "artist", "interpreter", "performer", "album", "albumname", "genre", "major_genre",
+      "albumart", "albumArt", "artwork", "artworkPath", "cover", "duration", "trackDuration", "TrackDuration",
+    ]) {
+      if (typeof item[key] === "string") userData[key] = decodeXml(item[key] as string);
+    }
     items.push({
       id: item.id,
       title: decodeXml(item.title),
       childCount: item.isDir === true || item.isDir === "1" ? 1 : 0,
-      userData: {
-        type: item.isDir === true || item.isDir === "1" ? "compilation" : "track",
-        ...(/^[0-9]+$/.test(entryKey) ? { playbackIndex: String(Math.max(0, startIndex) + Number(entryKey) + 1) } : {}),
-      },
+      userData,
     });
   }
   const totalItems = typeof root.totalItems === "number" ? root.totalItems
@@ -154,7 +161,7 @@ export function parseTrackMetadata(body: string): MaestroTrackMetadata | null {
     album: stringValue("album", "albumname"),
     artist: stringValue("artist", "interpreter", "performer"),
     genre: stringValue("genre", "major_genre"),
-    artworkPath: normalizeArtworkPath(stringValue("albumart", "albumArt", "artwork")),
+    artworkPath: normalizeArtworkPath(stringValue("albumart", "albumArt", "artwork", "artworkPath", "cover")),
     durationSeconds: parseTimeSeconds(stringValue("duration", "trackDuration", "TrackDuration")),
     playCount: numericValue("playcount", "playCount"),
     rating: numericValue("myRating", "rating"),

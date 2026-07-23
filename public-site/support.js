@@ -27,7 +27,9 @@ form.addEventListener("submit", async (event) => {
     form.reset();
     resetStartedAt();
     status.className = "success";
-    status.textContent = "Your support request was sent. We’ll reply by email.";
+    status.textContent = result.dryRun
+      ? "Dry run accepted by the local emulator. No email was sent."
+      : "Your support request was sent. We’ll reply by email.";
   } catch (error) {
     status.className = "error";
     status.textContent = error instanceof Error ? error.message : "Support request could not be sent.";

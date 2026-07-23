@@ -127,6 +127,8 @@ let currentIndex = 0;
 let transportState: NowPlayingSnapshot["transportState"] = "playing";
 let positionSeconds = 38;
 let sampledAt = Date.now();
+let demoVolume = 55;
+let demoMuted = false;
 
 function updatePosition(): void {
   if (transportState !== "playing") return;
@@ -150,12 +152,23 @@ function playback(command: PlaybackCommand): { status: number; durationMs: numbe
     if (index >= 0) currentIndex = index;
     positionSeconds = 0;
     transportState = "playing";
+  } else if (command.action === "seek") {
+    const duration = tracks[currentIndex]?.durationSeconds ?? 240;
+    positionSeconds = Math.min(duration, Math.max(0, command.positionSeconds));
   } else if (command.action === "next" || command.action === "previous") {
     currentIndex = (currentIndex + (command.action === "next" ? 1 : tracks.length - 1)) % tracks.length;
     positionSeconds = 0;
     transportState = "playing";
   } else if (command.action === "pause") {
     transportState = transportState === "playing" ? "paused" : "playing";
+  } else if (command.action === "volumeDown") {
+    demoVolume = Math.max(0, demoVolume - 5);
+    demoMuted = false;
+  } else if (command.action === "volumeUp") {
+    demoVolume = Math.min(100, demoVolume + 5);
+    demoMuted = false;
+  } else if (command.action === "mute") {
+    demoMuted = !demoMuted;
   } else {
     transportState = "stopped";
     positionSeconds = 0;

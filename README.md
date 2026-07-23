@@ -4,7 +4,7 @@ A private local-network remote for compatible legacy Olive music servers. The O4
 
 [Public website](https://olive-remote-lab.web.app) · [Private support](https://olive-remote-lab.web.app/support) · [Source repository](https://github.com/djfracking/olive-remote-lab) · [Privacy policy](https://olive-remote-lab.web.app/privacy)
 
-Everything runs on your computer and LAN. There are no accounts, analytics, cloud services, remote fonts, or external API calls.
+The controller runs on your computer and LAN. There are no accounts, analytics, remote fonts, or external control API calls; the separate public website uses Firebase only to serve help pages and deliver owner-initiated support messages.
 
 Native Android and iOS projects are included. See [mobile store release handoff](docs/store-release.md) for signing, TestFlight, Play Console, entitlement, and physical-device release gates.
 
@@ -31,6 +31,22 @@ npm run verify
 ```
 
 `npm run verify` is the release-candidate check: strict TypeScript, unit tests, and every production web/Node build. Pull requests and updates to `release` run the same check in GitHub Actions, plus unsigned Android and iOS Simulator builds.
+
+### Public owner-help site
+
+To preview the Firebase-hosted owner-help pages and private diagnostic flow on the usual local port, run this instead of `npm run dev`:
+
+```bash
+npm run site:dev
+```
+
+Open [http://localhost:3000](http://localhost:3000). The Hosting emulator serves `public-site/` and forwards `/api/support` to the local Functions emulator. Local submissions are validated and return a dry-run success response; the emulator neither reads production mail secrets nor sends Gmail. Before publishing changes, run the focused site check without building the apps:
+
+```bash
+npm run site:check
+```
+
+The diagnostic records only allowlisted device answers, a reply address, the owner's description, consent state, and an optional predefined source label. It does not store browser referrers, tracking parameters, IP addresses, serial numbers, credentials, or music-library data in an application database.
 
 ## Android app
 
@@ -101,9 +117,9 @@ All device-specific request construction and parsing lives in `packages/olive-cl
 - Discovery checks only ports 80 and 8163 and the three stated web paths.
 - Redirects are not followed, preventing a device response from redirecting the proxy off-LAN.
 - Logs live in proxy memory and request history/device selections live in browser local storage.
-- Music-server addresses, library data, playback traffic, and diagnostics are never sent to Firebase or any other cloud service.
+- Music-server addresses, library data, playback traffic, and in-app diagnostic exports are never sent to Firebase or any other cloud service automatically.
 
-The public website is hosted by Firebase Hosting and necessarily receives ordinary web-delivery request metadata. It has no analytics, sign-in, database, or music-server API. Its optional support form uses a narrowly scoped Firebase Function to forward a user-supplied reply address and message to a private support mailbox. See [public-site/privacy.html](public-site/privacy.html).
+The public website is hosted by Firebase Hosting and necessarily receives ordinary web-delivery request metadata. It has no analytics, sign-in, application database, or music-server API. Its optional support and owner-diagnostic forms use a narrowly scoped Firebase Function to forward user-supplied details to a private support mailbox. See [public-site/privacy.html](public-site/privacy.html).
 
 ## Multi-model support
 

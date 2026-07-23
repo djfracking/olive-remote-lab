@@ -7,6 +7,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(OliveDiscoveryPlugin.class);
+        registerPlugin(OlivePlaybackPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }
