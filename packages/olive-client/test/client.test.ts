@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { OliveCompatibilityClient } from "../src/client.js";
 import type { OliveTransport, TransportRequest, TransportResponse } from "../src/types.js";
 
@@ -17,7 +17,25 @@ describe("Olive compatibility client", () => {
     } };
     const client = new OliveCompatibilityClient(transport);
     await expect(client.detectDevice({ host: "192.168.68.110", port: 80 })).resolves.toMatchObject({ displayName: "OPUS No.4" });
-    expect(paths).toEqual(["/index.php", "/index.php", "/maestro.php"]);
+    expect(paths.slice(0, 3)).toEqual(["/index.php", "/index.php", "/maestro.php"]);
+    expect(paths).toContain("/");
+  });
+
+  it("prefers a later O4HD firmware marker over an earlier generic OPUS page", async () => {
+    const paths: string[] = [];
+    const transport: OliveTransport = { request: async (request) => {
+      const path = new URL(request.url).pathname;
+      paths.push(path);
+      if (path === "/index.php") return response(request, "<title>Olive OPUS</title>");
+      if (path === "/maestro.php") return response(request, "<script>OPUS4HD_CODE_START_NOT_O6HD</script>");
+      return response(request, "<title>Olive OPUS</title>");
+    } };
+    const client = new OliveCompatibilityClient(transport);
+    await expect(client.detectDevice({ host: "192.168.68.110", port: 80 })).resolves.toMatchObject({
+      model: "o4hd",
+      frontPanelApi: "verified",
+    });
+    expect(paths).toEqual(["/index.php", "/maestro.php"]);
   });
 
   it("fails over from port 80 to 8163 and remembers the healthy port", async () => {
@@ -58,7 +76,35 @@ describe("Olive compatibility client", () => {
     const client = new OliveCompatibilityClient(transport);
     const target = { host: "192.168.1.8", port: 80 };
     await client.controlPlayback(target, { action: "play", itemId: "track-7", index: 1 });
-    await expect(client.getNowPlaying(target)).resolves.toMatchObject({ itemId: "track-7", metadata: { title: "Song" } });
+    await expect(client.getNowPlaying(target)).resolves.toMatchObject({
+      itemId: "track-7",
+      identitySource: "command-fallback",
+      metadata: { title: "Song" },
+    });
+  });
+
+  it("expires a command identity fallback when the Olive never confirms an item", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    try {
+      const transport: OliveTransport = { request: async (request) => {
+        const url = new URL(request.url);
+        if (url.pathname.endsWith("getcurrentplaying.php")) return response(request, "inf_showcurrentplaying('');");
+        if (url.searchParams.get("action") === "getBottomStatus") return response(request, '{"TransportState":"PLAYING"}');
+        return response(request, "{}");
+      } };
+      const client = new OliveCompatibilityClient(transport);
+      const target = { host: "192.168.1.8", port: 80 };
+      await client.controlPlayback(target, { action: "play", itemId: "track-7", index: 1 });
+      vi.setSystemTime(31_001);
+      await expect(client.getNowPlaying(target)).resolves.toMatchObject({
+        itemId: "",
+        identitySource: "none",
+        metadata: null,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("does not report the previous item after a hardware skip when current-playing is blank", async () => {
@@ -85,7 +131,7 @@ describe("Olive compatibility client", () => {
     } };
     const client = new OliveCompatibilityClient(transport);
     await expect(client.getNowPlaying({ host: "192.168.1.8", port: 80 })).resolves.toMatchObject({
-      itemId: "track-9", metadata: null, transportState: "playing",
+      itemId: "track-9", metadata: null, identitySource: "device", transportState: "playing",
     });
   });
 
@@ -122,14 +168,18 @@ describe("Olive compatibility client", () => {
     ]);
   });
 
-  it("formats a seek as an Olive relative-time command", async () => {
-    let requestUrl = "";
-    const transport: OliveTransport = { request: async (request) => { requestUrl = request.url; return response(request, "{}"); } };
+  it("quarantines the unverified legacy seek without touching the Olive", async () => {
+    let requests = 0;
+    const transport: OliveTransport = { request: async (request) => {
+      requests += 1;
+      return response(request, "{}");
+    } };
     const client = new OliveCompatibilityClient(transport);
-    await client.controlPlayback({ host: "192.168.1.8", port: 80 }, { action: "seek", positionSeconds: 245.8 });
-    expect(Object.fromEntries(new URL(requestUrl).searchParams)).toMatchObject({
-      action: "seek", unit: "REL_TIME", target: "00:04:05",
-    });
+    await expect(client.controlPlayback(
+      { host: "192.168.1.8", port: 80 },
+      { action: "seek", positionSeconds: 245.8 },
+    )).rejects.toThrow("quarantined");
+    expect(requests).toBe(0);
   });
 
   it("uses the O4HD front-panel relative volume actions without inventing a level", async () => {

@@ -5,11 +5,21 @@ def releaseSigningFile = rootProject.file("signing.properties")
 if (releaseSigningFile.exists()) {
     releaseSigningProperties.load(new FileInputStream(releaseSigningFile))
 }
-def hasReleaseSigning = ["storeFile", "storePassword", "keyAlias", "keyPassword"].every {
-    releaseSigningProperties.getProperty(it)
+def releaseSigningEnvironment = [
+    storeFile: System.getenv("OLIVE_UPLOAD_KEYSTORE"),
+    storePassword: System.getenv("OLIVE_UPLOAD_STORE_PASSWORD"),
+    keyAlias: System.getenv("OLIVE_UPLOAD_KEY_ALIAS"),
+    keyPassword: System.getenv("OLIVE_UPLOAD_KEY_PASSWORD")
+]
+def releaseSigningValues = [:]
+["storeFile", "storePassword", "keyAlias", "keyPassword"].each {
+    releaseSigningValues[it] = releaseSigningProperties.getProperty(it) ?: releaseSigningEnvironment[it]
 }
-def appVersionCode = (System.getenv("OLIVE_VERSION_CODE") ?: "1").toInteger()
-def appVersionName = System.getenv("OLIVE_VERSION_NAME") ?: "1.0.0"
+def hasReleaseSigning = releaseSigningValues.values().every {
+    it
+}
+def appVersionCode = (System.getenv("OLIVE_VERSION_CODE") ?: "12").toInteger()
+def appVersionName = System.getenv("OLIVE_VERSION_NAME") ?: "1.0.4"
 def allowUnsignedRelease = project.hasProperty("allowUnsignedRelease")
 
 gradle.taskGraph.whenReady { graph ->
@@ -37,10 +47,10 @@ android {
     signingConfigs {
         if (hasReleaseSigning) {
             release {
-                storeFile rootProject.file(releaseSigningProperties.getProperty("storeFile"))
-                storePassword releaseSigningProperties.getProperty("storePassword")
-                keyAlias releaseSigningProperties.getProperty("keyAlias")
-                keyPassword releaseSigningProperties.getProperty("keyPassword")
+                storeFile rootProject.file(releaseSigningValues.storeFile)
+                storePassword releaseSigningValues.storePassword
+                keyAlias releaseSigningValues.keyAlias
+                keyPassword releaseSigningValues.keyPassword
             }
         }
     }

@@ -45,6 +45,11 @@ The app requests local-network access because it sends SSDP discovery packets an
 
 ## Prepared media
 
+- `store-assets/ios/iphone-6.5/01-find-my-olive.png` — 1284 × 2778 App Store 6.5-inch connection screen.
+- `store-assets/ios/iphone-6.5/02-now-playing.png` — 1284 × 2778 App Store 6.5-inch Now Playing screen.
+- `store-assets/ios/iphone-6.5/03-albums.png` — 1284 × 2778 App Store 6.5-inch album browser.
+- `store-assets/ios/iphone-6.5/04-search.png` — 1284 × 2778 App Store 6.5-inch search results.
+- `store-assets/ios/iphone-6.5/05-settings.png` — 1284 × 2778 App Store 6.5-inch Settings and support screen.
 - `store-assets/ios/iphone-16-plus/01-find-my-olive.png` — 1290 × 2796 iPhone connection screen.
 - `store-assets/ios/iphone-16-plus/02-now-playing.png` — 1290 × 2796 iPhone Now Playing screen.
 - `store-assets/ios/iphone-16-plus/03-albums.png` — 1290 × 2796 iPhone album browser.
@@ -53,8 +58,10 @@ The app requests local-network access because it sends SSDP discovery packets an
 - `store-assets/ios/ipad-13/01-find-my-olive.png` — 2064 × 2752 iPad connection screen.
 - `store-assets/ios/ipad-13/02-now-playing.png` — 2752 × 2064 iPad Now Playing screen.
 - `store-assets/ios/ipad-13/03-library.png` — 2752 × 2064 iPad library overview.
+- `store-assets/google-play/app-icon-512.png` — 512 × 512 Google Play store icon.
+- `store-assets/google-play/feature-graphic.png` — 1024 × 500 Google Play feature graphic.
 
-Use only the files listed above for the current iOS submission; other unlisted captures in the asset folders are reference drafts. Android phone/tablet screenshots still need to be prepared from the signed release candidate. Final screenshots and listing claims must be checked against a physical release candidate before submission.
+Use the `iphone-6.5` files for the current App Store iPhone screenshot slot; the `iphone-16-plus` files remain source captures. Android phone/tablet screenshots still need to be prepared from the signed release candidate. Final screenshots and listing claims must be checked against a physical release candidate before submission.
 
 ## Commercial terms
 

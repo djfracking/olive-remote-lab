@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 500" role="img" aria-labelledby="title desc">
+  <title id="title">Olive Remote</title>
+  <desc id="desc">Google Play feature graphic for Olive Remote.</desc>
+  <rect width="1024" height="500" fill="#0d100d"/>
+  <circle cx="964" cy="-28" r="250" fill="#182018"/>
+  <circle cx="982" cy="478" r="158" fill="#111711"/>
+  <rect x="72" y="68" width="364" height="364" rx="82" fill="#171b17"/>
+  <g transform="translate(72 68) scale(.711)">
+    <g fill="#b7dc71">
+      <ellipse cx="250" cy="294" rx="105" ry="139"/>
+      <path d="M218 166c-48-48-110-39-143-3 53 21 103 13 143 3Z"/>
+      <path d="M215 182c14-41 26-72 36-99l21 8c-12 30-25 63-39 99Z"/>
+    </g>
+    <path d="M220 244 220 344 306 294Z" fill="#171b17"/>
+    <g transform="translate(0 -60)" fill="none" stroke="#b7dc71" stroke-linecap="round" stroke-width="18">
+      <path d="M359 206a58 58 0 0 1 58 58"/>
+      <path d="M359 163a101 101 0 0 1 101 101"/>
+    </g>
+  </g>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif">
+    <text x="492" y="212" fill="#f3f7ed" font-size="64" font-weight="700" letter-spacing="-1.8">Olive Remote</text>
+    <text x="496" y="264" fill="#b7dc71" font-size="25" font-weight="650" letter-spacing="2.1">PRIVATE · LOCAL · MODERN</text>
+    <text x="496" y="318" fill="#aab2a7" font-size="27">Give your music server a useful second life.</text>
+  </g>
+</svg>

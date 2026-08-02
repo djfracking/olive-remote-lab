@@ -21,6 +21,17 @@ import java.lang.ref.WeakReference;
 )
 public class OlivePlaybackPlugin extends Plugin {
     private static WeakReference<OlivePlaybackPlugin> activePlugin = new WeakReference<>(null);
+    private static String latestHost = "";
+    private static int latestPort = 80;
+    private static String latestItemId = "";
+    private static String latestTitle = "";
+    private static String latestArtist = "";
+    private static String latestAlbum = "";
+    private static String latestArtworkUrl = "";
+    private static String latestState = "unknown";
+    private static double latestPositionSeconds = 0;
+    private static double latestDurationSeconds = 0;
+    private static double latestSampledAt = 0;
 
     @Override
     public void load() {
@@ -45,6 +56,7 @@ public class OlivePlaybackPlugin extends Plugin {
     @PluginMethod
     public void clear(PluginCall call) {
         getContext().stopService(new Intent(getContext(), OlivePlaybackService.class));
+        updateSnapshot("", 80, "", "", "", "", "", "stopped", 0, 0, System.currentTimeMillis());
         call.resolve();
     }
 
@@ -62,6 +74,25 @@ public class OlivePlaybackPlugin extends Plugin {
         call.resolve();
     }
 
+    @PluginMethod
+    public void current(PluginCall call) {
+        JSObject snapshot = new JSObject();
+        synchronized (OlivePlaybackPlugin.class) {
+            snapshot.put("host", latestHost);
+            snapshot.put("port", latestPort);
+            snapshot.put("itemId", latestItemId);
+            snapshot.put("title", latestTitle);
+            snapshot.put("artist", latestArtist);
+            snapshot.put("album", latestAlbum);
+            snapshot.put("artworkUrl", latestArtworkUrl);
+            snapshot.put("state", latestState);
+            snapshot.put("positionSeconds", latestPositionSeconds);
+            snapshot.put("durationSeconds", latestDurationSeconds);
+            snapshot.put("sampledAt", latestSampledAt);
+        }
+        call.resolve(snapshot);
+    }
+
     static boolean emitCommand(String id, String action, long positionMs) {
         OlivePlaybackPlugin plugin = activePlugin.get();
         if (plugin == null) return false;
@@ -71,6 +102,32 @@ public class OlivePlaybackPlugin extends Plugin {
         if (positionMs >= 0) event.put("positionSeconds", positionMs / 1000d);
         plugin.notifyListeners("command", event);
         return true;
+    }
+
+    static synchronized void updateSnapshot(
+            String host,
+            int port,
+            String itemId,
+            String title,
+            String artist,
+            String album,
+            String artworkUrl,
+            String state,
+            double positionSeconds,
+            double durationSeconds,
+            double sampledAt
+    ) {
+        latestHost = host == null ? "" : host;
+        latestPort = port;
+        latestItemId = itemId == null ? "" : itemId;
+        latestTitle = title == null ? "" : title;
+        latestArtist = artist == null ? "" : artist;
+        latestAlbum = album == null ? "" : album;
+        latestArtworkUrl = artworkUrl == null ? "" : artworkUrl;
+        latestState = state == null ? "unknown" : state;
+        latestPositionSeconds = Math.max(0, positionSeconds);
+        latestDurationSeconds = Math.max(0, durationSeconds);
+        latestSampledAt = sampledAt;
     }
 
     private void startSession(PluginCall call) {
@@ -98,6 +155,19 @@ public class OlivePlaybackPlugin extends Plugin {
         intent.putExtra("durationSeconds", duration == null ? 0d : duration);
         Double sampledAt = call.getDouble("sampledAt", (double) System.currentTimeMillis());
         intent.putExtra("sampledAt", sampledAt == null ? (double) System.currentTimeMillis() : sampledAt.doubleValue());
+        updateSnapshot(
+                host,
+                port,
+                call.getString("itemId", ""),
+                call.getString("title", "Playing on Olive"),
+                call.getString("artist", ""),
+                call.getString("album", ""),
+                call.getString("artworkUrl", ""),
+                call.getString("state", "unknown"),
+                position == null ? 0d : position,
+                duration == null ? 0d : duration,
+                sampledAt == null ? (double) System.currentTimeMillis() : sampledAt
+        );
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) getContext().startForegroundService(intent);
         else getContext().startService(intent);
         call.resolve();

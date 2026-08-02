@@ -7,7 +7,7 @@
     <path d="M215 182c14-41 26-72 36-99l21 8c-12 30-25 63-39 99Z"/>
   </g>
   <path d="M220 244 220 344 306 294Z" fill="#171b17"/>
-  <g fill="none" stroke="#b7dc71" stroke-linecap="round" stroke-width="18">
+  <g transform="translate(0 -60)" fill="none" stroke="#b7dc71" stroke-linecap="round" stroke-width="18">
     <path d="M359 206a58 58 0 0 1 58 58"/>
     <path d="M359 163a101 101 0 0 1 101 101"/>
   </g>

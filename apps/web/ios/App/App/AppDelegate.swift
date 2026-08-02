@@ -179,11 +179,11 @@ public class OlivePlaybackPlugin: CAPPlugin, CAPBridgedPlugin {
         add(center.previousTrackCommand) { [weak self] _ in self?.dispatch("previous") ?? .commandFailed }
         add(center.nextTrackCommand) { [weak self] _ in self?.dispatch("next") ?? .commandFailed }
         add(center.stopCommand) { [weak self] _ in self?.dispatch("stop") ?? .commandFailed }
-        add(center.changePlaybackPositionCommand) { [weak self] event in
-            guard let self, let seek = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
-            guard seek.positionTime.isFinite, seek.positionTime >= 0 else { return .commandFailed }
-            return self.dispatch("seek", position: seek.positionTime)
-        }
+        // The O4 advertises Seek but rejects both REL_TIME and ABS_TIME, while
+        // its legacy seek endpoint returns success without moving playback.
+        // Keep elapsed time visible in Control Center, but never advertise or
+        // execute an unverified seek command.
+        center.changePlaybackPositionCommand.isEnabled = false
         updateCommandAvailability()
     }
 
@@ -201,11 +201,12 @@ public class OlivePlaybackPlugin: CAPPlugin, CAPBridgedPlugin {
         center.previousTrackCommand.isEnabled = configured
         center.nextTrackCommand.isEnabled = configured
         center.stopCommand.isEnabled = configured
-        center.changePlaybackPositionCommand.isEnabled = configured && duration > 0
+        center.changePlaybackPositionCommand.isEnabled = false
     }
 
     private func dispatch(_ action: String, position: Double? = nil) -> MPRemoteCommandHandlerStatus {
         guard !host.isEmpty else { return .noSuchContent }
+        guard action != "seek" else { return .commandFailed }
         let id = UUID().uuidString
         pendingCommands.insert(id)
         var payload: [String: Any] = ["id": id, "action": action]
@@ -225,13 +226,11 @@ public class OlivePlaybackPlugin: CAPPlugin, CAPBridgedPlugin {
         } else if action == "stop" {
             state = .stopped
             position = 0
-        } else if action == "seek", let incomingPosition {
-            position = duration > 0 ? min(duration, max(0, incomingPosition)) : max(0, incomingPosition)
         } else {
             position = 0
         }
         updatePublishedState()
-        perform(action: nativeAction, position: action == "seek" ? position : nil)
+        perform(action: nativeAction)
     }
 
     private func updatePublishedState() {
@@ -284,10 +283,6 @@ public class OlivePlaybackPlugin: CAPPlugin, CAPBridgedPlugin {
             components.queryItems = [URLQueryItem(name: "action", value: "controlPlayer"), URLQueryItem(name: "id", value: "stop")]
         case "previous": components.queryItems = [URLQueryItem(name: "action", value: "left_skip")]
         case "next": components.queryItems = [URLQueryItem(name: "action", value: "right_skip")]
-        case "seek":
-            let seconds = max(0, Int(position ?? 0))
-            let time = String(format: "%02d:%02d:%02d", seconds / 3600, seconds % 3600 / 60, seconds % 60)
-            components.queryItems = [URLQueryItem(name: "action", value: "seek"), URLQueryItem(name: "unit", value: "REL_TIME"), URLQueryItem(name: "target", value: time)]
         default: return nil
         }
         return components.url

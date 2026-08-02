@@ -1,5 +1,11 @@
 import dgram from "node:dgram";
 import { networkInterfaces } from "node:os";
+import {
+  deriveStableUpnpIdentity,
+  parseUpnpDeviceDescription,
+  type UpnpDeviceDescription,
+  type UpnpServiceDescription,
+} from "@olive-remote-lab/olive-client";
 import { LocalHttpTransport } from "./transport.js";
 
 const SEARCH_TARGETS = ["upnp:rootdevice", "urn:schemas-upnp-org:device:MediaServer:1"] as const;
@@ -10,13 +16,21 @@ export interface DiscoveryCandidate {
   address: string;
   port: number;
   name: string;
+  deviceId?: string;
+  udn?: string;
+  usn?: string;
   model?: string;
   manufacturer?: string;
+  /** @deprecated Use descriptionUrl. */
   description?: string;
+  descriptionUrl?: string;
+  descriptionUrls?: string[];
   source: "ssdp" | "subnet";
   confidence: "high" | "possible";
   evidence: string[];
-  services?: string[];
+  services?: readonly UpnpServiceDescription[];
+  serviceTypes?: string[];
+  approvedServiceDeviceIds?: string[];
 }
 
 interface SsdpReply { address: string; headers: Record<string, string> }
@@ -36,13 +50,12 @@ function xmlValue(xml: string, tag: string): string | undefined {
   return match?.[1]?.replace(/<!\[CDATA\[|\]\]>/g, "").trim();
 }
 
-function serviceTypes(xml: string): string[] {
-  return [...xml.matchAll(/<serviceType>([^<]+)<\/serviceType>/gi)].map((match) => match[1]?.trim()).filter((item): item is string => Boolean(item));
-}
-
 function oliveEvidence(...values: Array<string | undefined>): string[] {
   const labels = ["manufacturer", "model", "friendly name", "server", "web response"];
-  return values.flatMap((value, index) => value && /olive|maestro|4hd|3hd|6hd|opust|melody/i.test(value) ? [`${labels[index]}: ${value.slice(0, 120)}`] : []);
+  return values.flatMap((value, index) =>
+    value && /olive|maestro|4hd|3hd|5hd|6hd|opus|melody|symphony|musica/i.test(value)
+      ? [`${labels[index]}: ${value.slice(0, 120)}`]
+      : []);
 }
 
 async function ssdpSearch(timeoutMs = 1_800): Promise<SsdpReply[]> {
@@ -68,35 +81,114 @@ async function ssdpSearch(timeoutMs = 1_800): Promise<SsdpReply[]> {
   return [...replies.values()];
 }
 
+interface InspectedDescription {
+  reply: SsdpReply;
+  xml: string;
+  parsed: UpnpDeviceDescription | null;
+}
+
+function canonicalDescription(descriptions: readonly InspectedDescription[]): InspectedDescription | undefined {
+  return [...descriptions].sort((left, right) => {
+    const score = (entry: InspectedDescription) => {
+      const rootType = entry.parsed?.rootDevice.deviceType ?? "";
+      const services = entry.parsed?.services ?? [];
+      return (/device:MediaServer:/i.test(entry.reply.headers.st ?? "") ? 8 : 0)
+        + (/device:MediaServer:/i.test(rootType) ? 4 : 0)
+        + (services.some((service) => /:service:ContentDirectory:/i.test(service.serviceType)) ? 2 : 0)
+        + (/rootdevice/i.test(entry.reply.headers.st ?? "") ? 1 : 0);
+    };
+    return score(right) - score(left);
+  })[0];
+}
+
+function aggregateServices(descriptions: readonly InspectedDescription[]): UpnpServiceDescription[] {
+  const services = descriptions.flatMap((entry) => [...(entry.parsed?.services ?? [])]);
+  return [...new Map(services.map((service) => [
+    `${service.serviceType}|${service.serviceId}|${service.controlUrl ?? service.rawControlUrl}|${service.deviceUdn ?? ""}`,
+    service,
+  ])).values()];
+}
+
 async function inspectSsdp(replies: SsdpReply[]): Promise<DiscoveryCandidate[]> {
   const transport = new LocalHttpTransport();
-  const uniqueReplies = [...new Map(replies.map((reply) => [reply.address, reply])).values()];
-  const candidates = await Promise.all(uniqueReplies.map(async (reply): Promise<DiscoveryCandidate | null> => {
-    const location = reply.headers.location;
-    let xml = "";
-    if (location) {
-      try { xml = (await transport.request({ method: "GET", url: location, timeoutMs: 1_200 })).body; } catch { /* retain SSDP metadata */ }
-    }
-    const manufacturer = xmlValue(xml, "manufacturer");
-    const model = xmlValue(xml, "modelName");
-    const friendlyName = xmlValue(xml, "friendlyName");
-    const evidence = oliveEvidence(manufacturer, model, friendlyName, reply.headers.server);
+  const replyGroups = new Map<string, SsdpReply[]>();
+  for (const reply of replies) {
+    const group = replyGroups.get(reply.address) ?? [];
+    group.push(reply);
+    replyGroups.set(reply.address, group);
+  }
+  const candidates = await Promise.all([...replyGroups.values()].map(async (group): Promise<DiscoveryCandidate | null> => {
+    const uniqueReplies = [...new Map(group
+      .filter((reply) => Boolean(reply.headers.location))
+      .map((reply) => [`${reply.headers.location}|${reply.headers.usn ?? ""}`, reply])).values()];
+    const descriptions = await Promise.all(uniqueReplies.map(async (reply): Promise<InspectedDescription> => {
+      const location = reply.headers.location ?? "";
+      let xml = "";
+      let parsed: UpnpDeviceDescription | null = null;
+      try {
+        xml = (await transport.request({ method: "GET", url: location, timeoutMs: 1_200 })).body;
+        parsed = parseUpnpDeviceDescription(xml, {
+          descriptionUrl: location,
+          ...(reply.headers.usn ? { ssdpUsn: reply.headers.usn } : {}),
+        });
+      } catch { /* retain SSDP metadata */ }
+      return { reply, xml, parsed };
+    }));
+    const fallbackReply = group[0];
+    const canonical = canonicalDescription(descriptions)
+      ?? (fallbackReply ? { reply: fallbackReply, xml: "", parsed: null } : undefined);
+    if (!canonical) return null;
+    const manufacturer = canonical.parsed?.rootDevice.manufacturer || xmlValue(canonical.xml, "manufacturer");
+    const model = canonical.parsed?.rootDevice.modelName || xmlValue(canonical.xml, "modelName");
+    const friendlyName = canonical.parsed?.rootDevice.friendlyName || xmlValue(canonical.xml, "friendlyName");
+    const evidence = oliveEvidence(
+      manufacturer,
+      model,
+      friendlyName,
+      group.map((reply) => reply.headers.server).filter(Boolean).join(" · "),
+    );
     if (!evidence.length) return null;
     // SSDP LOCATION commonly points at the UPnP media service (for example
     // port 49154), not the controller UI. Only expose a verified controller
     // port from the conservative 80/8163 allow-list.
-    const webCandidate = await probeHost(reply.address);
+    const webCandidate = await probeHost(canonical.reply.address);
+    const trustedDescriptions = descriptions.filter((entry) => entry === canonical || oliveEvidence(
+      entry.parsed?.rootDevice.manufacturer || xmlValue(entry.xml, "manufacturer"),
+      entry.parsed?.rootDevice.modelName || xmlValue(entry.xml, "modelName"),
+      entry.parsed?.rootDevice.friendlyName || xmlValue(entry.xml, "friendlyName"),
+    ).length > 0);
+    const orderedDescriptions = [
+      canonical,
+      ...trustedDescriptions.filter((entry) => entry !== canonical),
+    ];
+    const services = aggregateServices(orderedDescriptions);
+    const approvedServiceDeviceIds = [...new Set(services
+      .map((service) => service.deviceUdn?.trim())
+      .filter((value): value is string => Boolean(value)))];
+    const descriptionUrls = [...new Set(orderedDescriptions.map((entry) => entry.reply.headers.location).filter((value): value is string => Boolean(value)))];
+    const usn = canonical.reply.headers.usn;
+    const deviceId = canonical.parsed?.stableIdentity
+      ?? deriveStableUpnpIdentity({ udn: canonical.parsed?.udn ?? null, usn: usn ?? null });
+    const descriptionUrl = canonical.reply.headers.location;
     return {
-      address: reply.address,
+      address: canonical.reply.address,
       port: webCandidate?.port ?? 80,
-      name: friendlyName ?? model ?? `Possible device at ${reply.address}`,
+      name: friendlyName ?? model ?? `Possible device at ${canonical.reply.address}`,
+      ...(deviceId ? { deviceId } : {}),
+      ...(canonical.parsed?.udn ? { udn: canonical.parsed.udn } : {}),
+      ...(usn ? { usn } : {}),
       ...(model ? { model } : {}),
       ...(manufacturer ? { manufacturer } : {}),
-      ...(location ? { description: location } : {}),
+      ...(descriptionUrl ? { description: descriptionUrl, descriptionUrl } : {}),
+      ...(descriptionUrls.length ? { descriptionUrls } : {}),
       source: "ssdp",
       confidence: evidence.length >= 2 ? "high" : "possible",
       evidence: [...evidence, ...(webCandidate?.evidence ?? [])],
-      services: serviceTypes(xml),
+      ...(services.length ? {
+        services,
+        serviceTypes: [...new Set(services.map((service) => service.serviceType))],
+        approvedServiceDeviceIds,
+      } : {}),
     };
   }));
   return candidates.filter((candidate): candidate is DiscoveryCandidate => candidate !== null);

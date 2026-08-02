@@ -52,7 +52,7 @@ export interface ParsedBody {
 
 export interface MaestroBrowseRequest {
   id: string;
-  type: "albumname" | "artists" | "artist" | "album" | "compilation" | "genre" | "playlist" | "track";
+  type: "albumname" | "artists" | "artist" | "album" | "compilation" | "composer" | "genre" | "playlist" | "track";
   startIndex?: number;
   index?: number;
 }
@@ -62,6 +62,6 @@ export type PlaybackCommand =
   | { action: "seek"; positionSeconds: number }
   | { action: "pause" | "stop" | "previous" | "next" | "volumeDown" | "mute" | "volumeUp" };
 
-export type LibrarySearchScope = "albums" | "artists" | "genres" | "tracks" | "playlists";
+export type LibrarySearchScope = "albums" | "artists" | "composers" | "genres" | "tracks" | "playlists";
 
 export type PlaybackTransportState = "playing" | "paused" | "stopped" | "unknown";

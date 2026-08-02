@@ -8,6 +8,11 @@ const config: CapacitorConfig = {
     allowMixedContent: true,
   },
   plugins: {
+    SystemBars: {
+      insetsHandling: "css",
+      style: "DARK",
+      hidden: false,
+    },
     CapacitorHttp: {
       enabled: true,
     },

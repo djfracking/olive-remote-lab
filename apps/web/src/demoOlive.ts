@@ -44,6 +44,11 @@ const artists = [
   { id: "demo-artist-3", title: "Juniper Vale" },
   { id: "demo-artist-4", title: "The Common Field" },
 ];
+const composers = artists.map((artist) => ({
+  id: `demo-composer-${artist.id}`,
+  title: artist.title,
+  artistId: artist.id,
+}));
 
 const genres = ["Acoustic", "Ambient", "Electronic", "Jazz"];
 const playlists = [
@@ -89,6 +94,15 @@ function artistNodes(): MaestroTreeNode[] {
   }));
 }
 
+function composerNodes(): MaestroTreeNode[] {
+  return composers.map((composer) => ({
+    id: composer.id,
+    title: composer.title,
+    childCount: tracks.filter((track) => track.artistId === composer.artistId).length,
+    userData: { type: "composer" },
+  }));
+}
+
 function genreNodes(): MaestroTreeNode[] {
   return genres.map((genre) => ({ id: `demo-genre-${genre.toLowerCase()}`, title: genre, childCount: tracks.filter((track) => track.genre === genre).length, userData: { type: "genre" } }));
 }
@@ -100,6 +114,7 @@ function playlistNodes(): MaestroTreeNode[] {
 function browse(input: MaestroBrowseRequest): MaestroTree {
   if (input.id === "albumname") return tree("demo-albums", albumNodes());
   if (input.id === "artists") return tree("demo-artists", artistNodes());
+  if (input.id === "composers") return tree("demo-composers", composerNodes());
   if (input.id === "genres") return tree("demo-genres", genreNodes());
   if (input.id === "tracks") return tree("demo-tracks", tracks.map(trackNode));
   if (input.id === "playlists") return tree("demo-playlists", playlistNodes());
@@ -107,6 +122,8 @@ function browse(input: MaestroBrowseRequest): MaestroTree {
   if (album) return tree(album.id, tracks.filter((track) => track.albumId === album.id).map(trackNode));
   const artist = artists.find((item) => item.id === input.id);
   if (artist) return tree(artist.id, albumNodes(artist.id));
+  const composer = composers.find((item) => item.id === input.id);
+  if (composer) return tree(composer.id, tracks.filter((track) => track.artistId === composer.artistId).map(trackNode));
   const genre = genres.find((item) => `demo-genre-${item.toLowerCase()}` === input.id);
   if (genre) return tree(input.id, tracks.filter((track) => track.genre === genre).map(trackNode));
   const playlist = playlists.find((item) => item.id === input.id);
@@ -119,6 +136,7 @@ function search(term: string, scope: LibrarySearchScope): MaestroTree {
   if (scope === "tracks") return tree("demo-search-tracks", tracks.filter((track) => [track.title, track.artist, track.album, track.genre].some((value) => value.toLowerCase().includes(query))).map(trackNode));
   if (scope === "albums") return tree("demo-search-albums", albumNodes().filter((item) => item.title.toLowerCase().includes(query)));
   if (scope === "artists") return tree("demo-search-artists", artistNodes().filter((item) => item.title.toLowerCase().includes(query)));
+  if (scope === "composers") return tree("demo-search-composers", composerNodes().filter((item) => item.title.toLowerCase().includes(query)));
   if (scope === "genres") return tree("demo-search-genres", genreNodes().filter((item) => item.title.toLowerCase().includes(query)));
   return tree("demo-search-playlists", playlistNodes().filter((item) => item.title.toLowerCase().includes(query)));
 }
@@ -140,9 +158,9 @@ function updatePosition(): void {
 
 function nowPlaying(): NowPlayingSnapshot {
   updatePosition();
-  if (transportState === "stopped") return { itemId: "", metadata: null, transportState, positionSeconds: null, durationSeconds: null, sampledAt: Date.now() };
+  if (transportState === "stopped") return { itemId: "", metadata: null, identitySource: "none", transportState, positionSeconds: null, durationSeconds: null, sampledAt: Date.now() };
   const track = tracks[currentIndex]!;
-  return { itemId: track.id, metadata: track, transportState, positionSeconds, durationSeconds: track.durationSeconds, sampledAt: Date.now() };
+  return { itemId: track.id, metadata: track, identitySource: "device", transportState, positionSeconds, durationSeconds: track.durationSeconds, sampledAt: Date.now() };
 }
 
 function playback(command: PlaybackCommand): { status: number; durationMs: number; ok: true } {
@@ -213,12 +231,25 @@ export function handleDemoApi(path: string, body: unknown): { handled: false } |
       { id: "genres", title: "Genres", childCount: genres.length, userData: { type: "genre" } },
       { id: "tracks", title: "Tracks", childCount: tracks.length, userData: { type: "track" } },
       { id: "playlists", title: "Playlists", childCount: playlists.length, userData: { type: "playlist" } },
+      { id: "composers", title: "Composers", childCount: composers.length, userData: { type: "composer" } },
     ]) };
     case "/api/library/browse": return { handled: true, value: browse(input.browse as MaestroBrowseRequest) };
     case "/api/library/item-metadata": return { handled: true, value: tracks.find((track) => track.id === input.itemId) ?? null };
     case "/api/library/search": return { handled: true, value: search(String(input.term ?? ""), input.scope as LibrarySearchScope) };
     case "/api/now-playing": return { handled: true, value: nowPlaying() };
     case "/api/playback": return { handled: true, value: playback(input.command as PlaybackCommand) };
+    case "/api/upnp/volume": {
+      if (Object.prototype.hasOwnProperty.call(input, "volume")) {
+        const level = Number(input.volume);
+        if (!Number.isInteger(level) || level < 0 || level > 100) throw new Error("Invalid preview volume.");
+        demoVolume = level;
+      } else if (typeof input.muted === "boolean") {
+        demoMuted = input.muted;
+      } else {
+        throw new Error("Choose one preview volume or mute value.");
+      }
+      return { handled: true, value: { sampledAt: Date.now(), volume: demoVolume, muted: demoMuted } };
+    }
     case "/api/request": return { handled: true, value: response(String(input.path ?? "/"), "Reviewer demo response. No request left this device.", "text/plain") };
     default: return { handled: false };
   }

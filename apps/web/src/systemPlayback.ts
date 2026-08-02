@@ -1,7 +1,7 @@
 import { registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 import type { NowPlayingSnapshot, OliveDeviceTarget } from "@olive-remote-lab/olive-client";
 import { artworkUrl } from "./artwork";
-import { isNativeApp } from "./nativeApi";
+import { isNativeAndroid, isNativeApp } from "./nativeApi";
 
 interface NativePlaybackSnapshot {
   target: OliveDeviceTarget;
@@ -20,10 +20,55 @@ interface OlivePlaybackPlugin {
   update(options: NativePlaybackSnapshot): Promise<void>;
   clear(): Promise<void>;
   acknowledge(options: { id: string }): Promise<void>;
+  current(): Promise<NativePlaybackSnapshot & { host: string; port: number }>;
   addListener(
     eventName: "command",
     listener: (command: SystemPlaybackCommand) => void,
   ): Promise<PluginListenerHandle>;
+}
+
+export async function readSystemPlayback(target: OliveDeviceTarget): Promise<NowPlayingSnapshot | null> {
+  if (!OlivePlayback || !isNativeAndroid) return null;
+  try {
+    const current = await OlivePlayback.current();
+    if (
+      current.host.trim().toLowerCase() !== target.host.trim().toLowerCase()
+      || current.port !== target.port
+      || !current.itemId
+      || !current.title
+    ) return null;
+    const state = current.state === "playing" || current.state === "paused" || current.state === "stopped"
+      ? current.state
+      : "unknown";
+    const positionSeconds = typeof current.positionSeconds === "number" && current.positionSeconds >= 0
+      ? current.positionSeconds
+      : null;
+    const durationSeconds = typeof current.durationSeconds === "number" && current.durationSeconds > 0
+      ? current.durationSeconds
+      : null;
+    return {
+      itemId: current.itemId,
+      metadata: {
+        id: current.itemId,
+        title: current.title,
+        artist: current.artist,
+        album: current.album,
+        genre: "",
+        artworkPath: current.artworkUrl,
+        durationSeconds,
+        playCount: null,
+        rating: null,
+        raw: { source: "android-media-session" },
+      },
+      identitySource: "device",
+      transportState: state,
+      positionSeconds,
+      durationSeconds,
+      sampledAt: current.sampledAt > 0 ? current.sampledAt : Date.now(),
+    };
+  } catch {
+    return null;
+  }
 }
 
 export type SystemPlaybackCommand =

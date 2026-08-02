@@ -1,5 +1,5 @@
-const CACHE = "remote-lab-v2";
-const ARTWORK_CACHE = "olive-artwork-v1";
+const CACHE = "remote-lab-v5";
+const ARTWORK_CACHE = "olive-artwork-v2";
 const MAX_ARTWORK_ENTRIES = 500;
 const SHELL = ["/", "/manifest.webmanifest", "/icon.svg"];
 self.addEventListener("install", (event) => event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL))));

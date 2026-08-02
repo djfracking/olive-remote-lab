@@ -24,7 +24,11 @@ import type {
 
 export class OliveCompatibilityClient {
   private readonly preferredPorts = new Map<string, number>();
-  private readonly currentItemIds = new Map<string, string>();
+  private readonly commandFallbackItems = new Map<string, {
+    itemId: string;
+    issuedAt: number;
+    expiresAt: number;
+  }>();
   private readonly metadataCache = new Map<string, { metadata: MaestroTrackMetadata; cachedAt: number }>();
 
   public constructor(private readonly transport: OliveTransport) {}
@@ -58,14 +62,25 @@ export class OliveCompatibilityClient {
 
   public async detectDevice(target: OliveDeviceTarget): Promise<OliveModelCapabilities> {
     let lastError: unknown = new Error("The Olive did not answer on its web controller ports.");
+    let strongestModel: ReturnType<typeof detectOliveModel> | null = null;
+    const evidenceRank = (model: ReturnType<typeof detectOliveModel>): number => {
+      if (model === "o4hd") return 100;
+      if (["o3hd", "o5hd", "o6hd", "olive-one"].includes(model)) return 90;
+      if (["opus-3", "opus-4", "opus-5", "symphony-2", "melody-2", "olive-2", "olive-4"].includes(model)) return 70;
+      if (model === "unknown") return 0;
+      return 40;
+    };
     for (const path of ["/index.php", "/maestro.php", "/"]) {
       try {
         const response = await this.requestWithPortFallback(target, (candidate) => ({
           method: "GET", url: buildOliveUrl(candidate, path), timeoutMs: 5_000,
         }));
-        return capabilitiesForModel(detectOliveModel(response.body));
+        const detected = detectOliveModel(response.body);
+        if (!strongestModel || evidenceRank(detected) > evidenceRank(strongestModel)) strongestModel = detected;
+        if (detected === "o4hd") return capabilitiesForModel(detected);
       } catch (error) { lastError = error; }
     }
+    if (strongestModel) return capabilitiesForModel(strongestModel);
     throw lastError;
   }
 
@@ -76,7 +91,7 @@ export class OliveCompatibilityClient {
 
   public async browseLibrary(target: OliveDeviceTarget, input: MaestroBrowseRequest): Promise<MaestroTree> {
     if (!input.id.trim()) throw new Error("A library container ID is required.");
-    const allowedTypes = new Set(["albumname", "artists", "artist", "album", "compilation", "genre", "playlist", "track"]);
+    const allowedTypes = new Set(["albumname", "artists", "artist", "album", "compilation", "composer", "genre", "playlist", "track"]);
     if (!allowedTypes.has(input.type)) throw new Error("Unsupported library container type.");
     const startIndex = input.startIndex ?? 0;
     const index = input.index ?? Math.floor(startIndex / 21);
@@ -89,6 +104,14 @@ export class OliveCompatibilityClient {
     }
     if (input.type === "genre") {
       const response = await this.maestroPost(target, "/server/getInterpretersByGenreId.php", { gid: input.id });
+      return parseMaestroTree(response.body);
+    }
+    if (input.type === "composer" && input.id === "composers") {
+      const response = await this.maestroPost(
+        target,
+        "/server/getCompilationsAndTracks.php",
+        { id: "ROOT_ALLCO", type: "composer", startindex: String(startIndex), index: String(index) },
+      );
       return parseMaestroTree(response.body);
     }
     if (input.type === "track" && input.id === "tracks") {
@@ -108,13 +131,13 @@ export class OliveCompatibilityClient {
 
   public async getNowPlaying(target: OliveDeviceTarget): Promise<NowPlayingSnapshot> {
     const [currentResult, statusResult] = await Promise.allSettled([
-      this.maestroPost(target, "/server/getcurrentplaying.php", {}, 900),
+      this.maestroPost(target, "/server/getcurrentplaying.php", {}, 2_000),
       this.requestWithPortFallback(target, (candidate) => ({
         method: "GET",
         url: buildOliveUrl(candidate, "/includes/ajax/a_executeOperation.php", {
           action: "getBottomStatus", varAlarm: "alarmEnable", varTimer: "Idle30",
         }),
-        timeoutMs: 800,
+        timeoutMs: 1_500,
       }), "front"),
     ]);
     const targetKey = `${target.host}:${target.port}`;
@@ -123,15 +146,30 @@ export class OliveCompatibilityClient {
       ? parsePlaybackStatus(statusResult.value.body)
       : { transportState: "unknown" as const, positionSeconds: null, durationSeconds: null };
     const sampledAt = Date.now();
+    let identitySource: NowPlayingSnapshot["identitySource"] = itemId ? "device" : "none";
+    const fallback = this.commandFallbackItems.get(targetKey);
+    if (fallback && playback.durationSeconds !== null) {
+      const durationExpiry = fallback.issuedAt + Math.min(
+        4 * 60 * 60 * 1_000,
+        (playback.durationSeconds + 15) * 1_000,
+      );
+      fallback.expiresAt = Math.max(fallback.expiresAt, durationExpiry);
+    }
     if (!itemId && (playback.transportState === "playing" || playback.transportState === "paused")) {
-      itemId = this.currentItemIds.get(targetKey) ?? "";
+      if (fallback && fallback.expiresAt >= sampledAt) {
+        itemId = fallback.itemId;
+        identitySource = "command-fallback";
+      } else if (fallback) {
+        this.commandFallbackItems.delete(targetKey);
+      }
     }
     if (playback.transportState === "stopped") {
-      this.currentItemIds.delete(targetKey);
+      this.commandFallbackItems.delete(targetKey);
       itemId = "";
+      identitySource = "none";
     }
-    if (!itemId) return { itemId: "", metadata: null, ...playback, sampledAt };
-    this.currentItemIds.set(targetKey, itemId);
+    if (!itemId) return { itemId: "", metadata: null, identitySource: "none", ...playback, sampledAt };
+    if (identitySource === "device") this.commandFallbackItems.delete(targetKey);
     let metadata: MaestroTrackMetadata | null = null;
     try {
       metadata = await this.getItemMetadata(target, itemId, 1_500);
@@ -139,9 +177,20 @@ export class OliveCompatibilityClient {
       // Current identity and transport are still authoritative when the slower
       // metadata endpoint times out. The app can hydrate this item separately.
     }
+    if (identitySource === "command-fallback" && metadata?.durationSeconds !== null && metadata?.durationSeconds !== undefined) {
+      const currentFallback = this.commandFallbackItems.get(targetKey);
+      if (currentFallback?.itemId === itemId) {
+        const durationExpiry = currentFallback.issuedAt + Math.min(
+          4 * 60 * 60 * 1_000,
+          (metadata.durationSeconds + 15) * 1_000,
+        );
+        currentFallback.expiresAt = Math.max(currentFallback.expiresAt, durationExpiry);
+      }
+    }
     return {
       itemId,
       metadata,
+      identitySource,
       transportState: playback.transportState,
       positionSeconds: playback.positionSeconds,
       durationSeconds: playback.durationSeconds ?? metadata?.durationSeconds ?? null,
@@ -168,7 +217,12 @@ export class OliveCompatibilityClient {
     const query = term.trim();
     if (!query || query.length > 200) throw new Error("Search text must be between 1 and 200 characters.");
     const roots: Record<LibrarySearchScope, string> = {
-      albums: "ROOT_ALLAL", artists: "ROOT_ALLAR", genres: "ROOT_ALLGE", tracks: "ROOT_ALLAU", playlists: "ROOT_ALLPL",
+      albums: "ROOT_ALLAL",
+      artists: "ROOT_ALLAR",
+      composers: "ROOT_ALLCO",
+      genres: "ROOT_ALLGE",
+      tracks: "ROOT_ALLAU",
+      playlists: "ROOT_ALLPL",
     };
     if (!(scope in roots)) throw new Error("Unsupported search scope.");
     const response = await this.maestroPost(target, "/server/getSearchResult.php", { id: roots[scope], searchterm: query });
@@ -178,7 +232,10 @@ export class OliveCompatibilityClient {
   /** Playback-only operations copied from the observed legacy controllers. */
   public async controlPlayback(target: OliveDeviceTarget, command: PlaybackCommand): Promise<{ status: number; durationMs: number }> {
     const action = (command as { action?: unknown }).action;
-    if (typeof action !== "string" || !["play", "pause", "stop", "previous", "next", "seek", "volumeDown", "mute", "volumeUp"].includes(action)) {
+    if (action === "seek") {
+      throw new Error("Seeking is quarantined because no Olive seek endpoint has been physically verified.");
+    }
+    if (typeof action !== "string" || !["play", "pause", "stop", "previous", "next", "volumeDown", "mute", "volumeUp"].includes(action)) {
       throw new Error("Unsupported playback command.");
     }
     let response: TransportResponse;
@@ -197,21 +254,12 @@ export class OliveCompatibilityClient {
         timeoutMs: 8_000,
       }), "maestro");
       if (response.status < 200 || response.status >= 400) throw new Error(`Playback command failed (${response.status}).`);
-      this.currentItemIds.set(`${target.host}:${target.port}`, command.itemId);
-    } else if (command.action === "seek") {
-      if (!Number.isFinite(command.positionSeconds) || command.positionSeconds < 0) {
-        throw new Error("Seek position must be a non-negative number of seconds.");
-      }
-      const totalSeconds = Math.floor(command.positionSeconds);
-      const targetTime = `${String(Math.floor(totalSeconds / 3600)).padStart(2, "0")}:${String(Math.floor(totalSeconds % 3600 / 60)).padStart(2, "0")}:${String(totalSeconds % 60).padStart(2, "0")}`;
-      response = await this.requestWithPortFallback(target, (candidate) => ({
-        method: "GET",
-        url: buildOliveUrl(candidate, "/includes/ajax/a_executeOperation.php", {
-          action: "seek", unit: "REL_TIME", target: targetTime,
-        }),
-        timeoutMs: 5_000,
-      }), "front");
-      if (response.status < 200 || response.status >= 400) throw new Error(`Playback seek failed (${response.status}).`);
+      const issuedAt = Date.now();
+      this.commandFallbackItems.set(`${target.host}:${target.port}`, {
+        itemId: command.itemId,
+        issuedAt,
+        expiresAt: issuedAt + 30_000,
+      });
     } else if (command.action === "volumeDown" || command.action === "mute" || command.action === "volumeUp") {
       response = await this.requestWithPortFallback(target, (candidate) => ({
         method: "GET",
@@ -231,8 +279,8 @@ export class OliveCompatibilityClient {
         method: "GET", url: buildOliveUrl(candidate, "/includes/ajax/a_executeOperation.php", query), timeoutMs: 5_000,
       }), "front");
       if (response.status < 200 || response.status >= 400) throw new Error(`Playback command failed (${response.status}).`);
-      if (command.action === "stop") this.currentItemIds.delete(`${target.host}:${target.port}`);
-      if (command.action === "previous" || command.action === "next") this.currentItemIds.delete(`${target.host}:${target.port}`);
+      if (command.action === "stop") this.commandFallbackItems.delete(`${target.host}:${target.port}`);
+      if (command.action === "previous" || command.action === "next") this.commandFallbackItems.delete(`${target.host}:${target.port}`);
     }
     return { status: response.status, durationMs: response.durationMs };
   }

@@ -16,20 +16,24 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
 
+import org.json.JSONObject;
+
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.Inet4Address;
 import java.net.InetAddress;
-import java.net.URL;
 import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
+import java.net.URL;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class OlivePlaybackService extends Service {
     public static final String ACTION_UPDATE = "com.djfracking.oliveremotelab.playback.UPDATE";
@@ -40,9 +44,14 @@ public class OlivePlaybackService extends Service {
     private static final String ACTION_STOP = "com.djfracking.oliveremotelab.playback.STOP";
     private static final String CHANNEL_ID = "olive_playback";
     private static final int NOTIFICATION_ID = 4104;
+    private static final long METADATA_RECONCILE_INTERVAL_MS = 4_000;
+    private static final Pattern CURRENT_ITEM_PATTERN = Pattern.compile(
+            "inf_showcurrentplaying\\(\\s*(['\"])(.*?)\\1\\s*\\)",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL
+    );
     private static final long PLAYBACK_ACTIONS = PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE
             | PlaybackState.ACTION_PLAY_PAUSE | PlaybackState.ACTION_SKIP_TO_PREVIOUS
-            | PlaybackState.ACTION_SKIP_TO_NEXT | PlaybackState.ACTION_STOP | PlaybackState.ACTION_SEEK_TO;
+            | PlaybackState.ACTION_SKIP_TO_NEXT | PlaybackState.ACTION_STOP;
 
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -60,6 +69,13 @@ public class OlivePlaybackService extends Service {
     private long positionMs = 0;
     private long durationMs = 0;
     private long stateUpdatedAt = SystemClock.elapsedRealtime();
+    private boolean reconciliationPending = false;
+    private final Runnable reconciliationLoop = new Runnable() {
+        @Override public void run() {
+            reconcileMetadata();
+            handler.postDelayed(this, METADATA_RECONCILE_INTERVAL_MS);
+        }
+    };
 
     @Override
     public void onCreate() {
@@ -78,7 +94,6 @@ public class OlivePlaybackService extends Service {
             @Override public void onSkipToPrevious() { dispatchCommand("previous", -1); }
             @Override public void onSkipToNext() { dispatchCommand("next", -1); }
             @Override public void onStop() { dispatchCommand("stop", -1); }
-            @Override public void onSeekTo(long pos) { dispatchCommand("seek", pos); }
             @Override public void onCustomAction(String action, android.os.Bundle extras) {
                 if (ACTION_STOP.equals(action)) dispatchCommand("stop", -1);
             }
@@ -86,6 +101,7 @@ public class OlivePlaybackService extends Service {
         Intent activityIntent = new Intent(this, MainActivity.class).setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
         mediaSession.setSessionActivity(PendingIntent.getActivity(this, 0, activityIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));
         mediaSession.setActive(true);
+        handler.postDelayed(reconciliationLoop, METADATA_RECONCILE_INTERVAL_MS);
     }
 
     @Override
@@ -120,11 +136,17 @@ public class OlivePlaybackService extends Service {
             artwork = null;
             loadArtwork(incomingArtworkUrl, itemId);
         }
+        OlivePlaybackPlugin.updateSnapshot(
+                host, port, itemId, title, artist, album, artworkUrl, state,
+                positionMs / 1000d, durationMs / 1000d, sampledAt
+        );
         publishState();
+        handler.postDelayed(this::reconcileMetadata, 600);
     }
 
     private void dispatchCommand(String action, long incomingPositionMs) {
         if (host == null || host.isEmpty()) return;
+        if ("seek".equals(action)) return;
         handler.post(() -> {
             String id = UUID.randomUUID().toString();
             pendingCommands.add(id);
@@ -136,6 +158,8 @@ public class OlivePlaybackService extends Service {
             handler.postDelayed(() -> {
                 if (pendingCommands.remove(id)) performFallback(action, incomingPositionMs);
             }, 800);
+            handler.postDelayed(this::reconcileMetadata, 1_200);
+            handler.postDelayed(this::reconcileMetadata, 3_000);
         });
     }
 
@@ -147,14 +171,12 @@ public class OlivePlaybackService extends Service {
         } else if ("stop".equals(action)) {
             playbackState = PlaybackState.STATE_STOPPED;
             positionMs = 0;
-        } else if ("seek".equals(action)) {
-            positionMs = Math.max(0, durationMs > 0 ? Math.min(durationMs, incomingPositionMs) : incomingPositionMs);
         } else {
             positionMs = 0;
         }
         stateUpdatedAt = SystemClock.elapsedRealtime();
         publishState();
-        executeCommand(nativeAction, "seek".equals(action) ? positionMs / 1000 : -1);
+        executeCommand(nativeAction);
     }
 
     private void publishState() {
@@ -163,7 +185,9 @@ public class OlivePlaybackService extends Service {
                 .putString(MediaMetadata.METADATA_KEY_TITLE, title)
                 .putString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE, title)
                 .putString(MediaMetadata.METADATA_KEY_ARTIST, artist)
+                .putString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE, artist)
                 .putString(MediaMetadata.METADATA_KEY_ALBUM, album)
+                .putString(MediaMetadata.METADATA_KEY_DISPLAY_DESCRIPTION, album)
                 .putLong(MediaMetadata.METADATA_KEY_DURATION, durationMs);
         if (!artworkUrl.isEmpty()) metadata.putString(MediaMetadata.METADATA_KEY_ALBUM_ART_URI, artworkUrl);
         if (artwork != null) metadata.putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, artwork);
@@ -206,17 +230,17 @@ public class OlivePlaybackService extends Service {
         return new Notification.Action.Builder(icon, title, pending).build();
     }
 
-    private void executeCommand(String action, long seekSeconds) {
+    private void executeCommand(String action) {
         String currentHost = host;
         int currentPort = port;
         worker.execute(() -> {
             Set<Integer> ports = new LinkedHashSet<>();
             ports.add(currentPort); ports.add(80); ports.add(8163);
-            for (int candidate : ports) if (request(action, seekSeconds, currentHost, candidate)) return;
+            for (int candidate : ports) if (request(action, currentHost, candidate)) return;
         });
     }
 
-    private boolean request(String action, long seekSeconds, String address, int candidatePort) {
+    private boolean request(String action, String address, int candidatePort) {
         HttpURLConnection connection = null;
         try {
             String query;
@@ -224,11 +248,7 @@ public class OlivePlaybackService extends Service {
             else if ("stop".equals(action)) query = "action=controlPlayer&id=stop";
             else if ("previous".equals(action)) query = "action=left_skip";
             else if ("next".equals(action)) query = "action=right_skip";
-            else if ("seek".equals(action)) {
-                long seconds = Math.max(0, seekSeconds);
-                String time = String.format(java.util.Locale.US, "%02d:%02d:%02d", seconds / 3600, seconds % 3600 / 60, seconds % 60);
-                query = "action=seek&unit=REL_TIME&target=" + URLEncoder.encode(time, StandardCharsets.UTF_8.name());
-            } else return false;
+            else return false;
             URL url = new URL("http", address, candidatePort, "/includes/ajax/a_executeOperation.php?" + query);
             connection = (HttpURLConnection) url.openConnection();
             connection.setConnectTimeout(2500);
@@ -238,6 +258,149 @@ public class OlivePlaybackService extends Service {
             return status >= 200 && status < 400;
         } catch (Exception ignored) { return false; }
         finally { if (connection != null) connection.disconnect(); }
+    }
+
+    private void reconcileMetadata() {
+        if (reconciliationPending || host == null || host.isEmpty()
+                || playbackState == PlaybackState.STATE_STOPPED) return;
+        reconciliationPending = true;
+        String expectedHost = host;
+        int expectedPort = port;
+        worker.execute(() -> {
+            NativeMetadata incoming = fetchMetadata(expectedHost, expectedPort);
+            handler.post(() -> {
+                reconciliationPending = false;
+                if (incoming == null || !expectedHost.equals(host)) return;
+                boolean changed = !incoming.itemId.equals(itemId)
+                        || !incoming.title.equals(title)
+                        || !incoming.artist.equals(artist)
+                        || !incoming.album.equals(album);
+                if (!changed) return;
+                itemId = incoming.itemId;
+                title = incoming.title.isEmpty() ? "Playing on Olive" : incoming.title;
+                artist = incoming.artist;
+                album = incoming.album;
+                if (!incoming.artworkUrl.equals(artworkUrl)) {
+                    artworkUrl = incoming.artworkUrl;
+                    artwork = null;
+                    loadArtwork(artworkUrl, itemId);
+                }
+                OlivePlaybackPlugin.updateSnapshot(
+                        host,
+                        port,
+                        itemId,
+                        title,
+                        artist,
+                        album,
+                        artworkUrl,
+                        playbackState == PlaybackState.STATE_PLAYING ? "playing"
+                                : playbackState == PlaybackState.STATE_PAUSED ? "paused" : "stopped",
+                        positionMs / 1000d,
+                        durationMs / 1000d,
+                        System.currentTimeMillis()
+                );
+                publishState();
+            });
+        });
+    }
+
+    private NativeMetadata fetchMetadata(String address, int preferredPort) {
+        Set<Integer> ports = new LinkedHashSet<>();
+        ports.add(preferredPort); ports.add(80); ports.add(8163);
+        for (int candidatePort : ports) {
+            try {
+                String current = httpText(new URL("http", address, candidatePort, "/server/getcurrentplaying.php"), true);
+                Matcher match = CURRENT_ITEM_PATTERN.matcher(current);
+                if (!match.find()) continue;
+                String currentItemId = match.group(2) == null ? "" : match.group(2).trim();
+                if (currentItemId.isEmpty()) continue;
+                String encodedId = URLEncoder.encode(currentItemId, "UTF-8");
+                String details = httpText(new URL("http", address, candidatePort, "/server/getnewinfo.php?id=" + encodedId), false);
+                NativeMetadata metadata = parseMetadata(details, currentItemId, address, candidatePort);
+                if (metadata != null) return metadata;
+            } catch (Exception ignored) { }
+        }
+        return null;
+    }
+
+    private String httpText(URL url, boolean post) throws Exception {
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        try {
+            connection.setConnectTimeout(2_000);
+            connection.setReadTimeout(2_500);
+            connection.setInstanceFollowRedirects(false);
+            if (post) {
+                connection.setRequestMethod("POST");
+                connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+                connection.setDoOutput(true);
+                connection.setFixedLengthStreamingMode(0);
+                try (OutputStream output = connection.getOutputStream()) { output.flush(); }
+            }
+            int status = connection.getResponseCode();
+            if (status < 200 || status >= 400) throw new IllegalStateException("Olive metadata request failed");
+            try (InputStream input = connection.getInputStream(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+                byte[] buffer = new byte[4096];
+                int total = 0;
+                int count;
+                while ((count = input.read(buffer)) != -1) {
+                    total += count;
+                    if (total > 512 * 1024) throw new IllegalStateException("Olive metadata response was too large");
+                    output.write(buffer, 0, count);
+                }
+                return output.toString("UTF-8");
+            }
+        } finally {
+            connection.disconnect();
+        }
+    }
+
+    private NativeMetadata parseMetadata(String body, String currentItemId, String address, int candidatePort) {
+        int start = body.indexOf("new_info('");
+        int end = body.lastIndexOf("');");
+        if (start < 0 || end <= start + 10) return null;
+        try {
+            String payload = body.substring(start + 10, end).replace("\\'", "'");
+            JSONObject root = new JSONObject(payload);
+            JSONObject track = root.optJSONObject("track");
+            if (track == null) track = root;
+            String incomingTitle = firstString(track, "title", "track", "name");
+            String incomingArtist = firstString(track, "artist", "interpreter", "performer");
+            String incomingAlbum = firstString(track, "album", "albumname");
+            String artworkPath = firstString(track, "albumart", "albumArt", "artwork", "artworkPath", "cover");
+            String incomingArtwork = "";
+            if (!artworkPath.isEmpty() && !artworkPath.toLowerCase().contains("artworknotfound.gif")) {
+                incomingArtwork = artworkPath.startsWith("http://")
+                        ? artworkPath
+                        : "http://" + address + ":" + candidatePort + (artworkPath.startsWith("/") ? artworkPath : "/" + artworkPath);
+            }
+            return new NativeMetadata(currentItemId, incomingTitle, incomingArtist, incomingAlbum, incomingArtwork);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private static String firstString(JSONObject object, String... keys) {
+        for (String key : keys) {
+            String value = object.optString(key, "").trim();
+            if (!value.isEmpty()) return value;
+        }
+        return "";
+    }
+
+    private static final class NativeMetadata {
+        final String itemId;
+        final String title;
+        final String artist;
+        final String album;
+        final String artworkUrl;
+
+        NativeMetadata(String itemId, String title, String artist, String album, String artworkUrl) {
+            this.itemId = itemId;
+            this.title = title;
+            this.artist = artist;
+            this.album = album;
+            this.artworkUrl = artworkUrl;
+        }
     }
 
     private void loadArtwork(String value, String expectedItemId) {

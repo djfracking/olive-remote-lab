@@ -1,6 +1,31 @@
 import type { OliveTransport, TransportRequest, TransportResponse } from "@olive-remote-lab/olive-client";
 import { assertLocalUrl } from "./security.js";
 
+const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
+
+async function boundedResponseText(response: Response): Promise<string> {
+  const declaredLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_RESPONSE_BYTES) {
+    throw new Error("Olive response exceeded the 8 MiB safety limit.");
+  }
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let bytes = 0;
+  let body = "";
+  while (true) {
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    bytes += chunk.value.byteLength;
+    if (bytes > MAX_RESPONSE_BYTES) {
+      await reader.cancel();
+      throw new Error("Olive response exceeded the 8 MiB safety limit.");
+    }
+    body += decoder.decode(chunk.value, { stream: true });
+  }
+  return body + decoder.decode();
+}
+
 export class LocalHttpTransport implements OliveTransport {
   public async request(request: TransportRequest): Promise<TransportResponse> {
     await assertLocalUrl(request.url);
@@ -19,7 +44,7 @@ export class LocalHttpTransport implements OliveTransport {
         redirect: "manual",
         signal: controller.signal,
       });
-      const body = await response.text();
+      const body = await boundedResponseText(response);
       return {
         url: request.url,
         status: response.status,

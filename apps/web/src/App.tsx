@@ -10,20 +10,48 @@ import { LibraryView } from "./components/LibraryView";
 import { NowPlayingView } from "./components/NowPlayingView";
 import { SearchView } from "./components/SearchView";
 import { PlaylistsView } from "./components/PlaylistsView";
-import { SettingsView, type SavedOlive } from "./components/SettingsView";
+import { SettingsView, type OliveAvailability, type SavedOlive } from "./components/SettingsView";
 import { AddMusicView } from "./components/AddMusicView";
 import { MiniPlayer } from "./components/MiniPlayer";
 import { Icon } from "./components/Icons";
 import { useI18n } from "./i18n";
 import { appFetch, getLocalNetworkStatus, isNativeAndroid, isNativeApp, openLocalNetworkSettings, type LocalNetworkStatus } from "./nativeApi";
 import { DEMO_TARGET, isDemoTarget } from "./demoOlive";
-import { clearDeviceCache } from "./deviceCache";
+import { adoptDeviceCacheIdentity, clearDeviceCache } from "./deviceCache";
+import {
+  deviceRequestKey,
+  deviceSelectionKey,
+  devicesReferToSameOlive,
+  mergeStableOliveTarget,
+  upsertSavedDevice,
+  withCanonicalDeviceIdentity,
+  type StableOliveTarget,
+} from "./deviceIdentity";
+import { adoptDeviceLocalStorage } from "./deviceStorageMigration";
 import { PlaybackProvider } from "./playback/PlaybackProvider";
 import { LibraryCatalogSync } from "./components/LibraryCatalogSync";
 
 type Section = "Home" | "Library" | "Search" | "Playlists" | "Add Music" | "Lab" | "Settings";
-interface Device { host: string; port: number }
-interface Candidate { address: string; port: number; name: string; model?: string; manufacturer?: string; source: string; confidence: string; evidence: string[]; services?: string[] }
+interface Device extends StableOliveTarget {}
+interface Candidate {
+  address: string;
+  port: number;
+  name: string;
+  deviceId?: string;
+  udn?: string;
+  usn?: string;
+  model?: string;
+  manufacturer?: string;
+  description?: string;
+  descriptionUrl?: string;
+  descriptionUrls?: string[];
+  source: string;
+  confidence: string;
+  evidence: string[];
+  services?: StableOliveTarget["services"];
+  serviceTypes?: string[];
+  approvedServiceDeviceIds?: string[];
+}
 interface DiscoveryResult { candidates: Candidate[]; subnet?: string; ssdpResponses: number }
 interface HistoryItem { id: string; timestamp: string; method: HttpMethod; path: string; status?: number; durationMs?: number }
 
@@ -37,7 +65,73 @@ function readStored<T>(key: string, fallback: T): T {
   try { return JSON.parse(localStorage.getItem(key) ?? "") as T; } catch { return fallback; }
 }
 
-function deviceKey(device: Device): string { return `${device.host}:${device.port}`; }
+function storedDevice(value: unknown): Device | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const host = typeof record.host === "string" ? record.host.trim() : "";
+  const port = Number(record.port);
+  if (!host || !Number.isInteger(port) || port < 1 || port > 65_535) return null;
+  const stringField = (key: string) => typeof record[key] === "string" && record[key] ? String(record[key]) : undefined;
+  const stringsField = (key: string) => Array.isArray(record[key])
+    ? (record[key] as unknown[]).filter((entry): entry is string => typeof entry === "string" && Boolean(entry))
+    : undefined;
+  const services = Array.isArray(record.services)
+    ? record.services.filter((entry) =>
+      Boolean(entry)
+      && typeof entry === "object"
+      && typeof (entry as Record<string, unknown>).serviceType === "string") as unknown as StableOliveTarget["services"]
+    : undefined;
+  const deviceId = stringField("deviceId");
+  const udn = stringField("udn");
+  const usn = stringField("usn");
+  const descriptionUrl = stringField("descriptionUrl");
+  const descriptionUrls = stringsField("descriptionUrls");
+  const serviceTypes = stringsField("serviceTypes");
+  const approvedServiceDeviceIds = stringsField("approvedServiceDeviceIds");
+  return {
+    host,
+    port,
+    ...(deviceId ? { deviceId } : {}),
+    ...(udn ? { udn } : {}),
+    ...(usn ? { usn } : {}),
+    ...(descriptionUrl ? { descriptionUrl } : {}),
+    ...(descriptionUrls?.length ? { descriptionUrls } : {}),
+    ...(services?.length ? { services } : {}),
+    ...(serviceTypes?.length ? { serviceTypes } : {}),
+    ...(approvedServiceDeviceIds?.length ? { approvedServiceDeviceIds } : {}),
+  };
+}
+
+function storedSavedDevices(): SavedOlive[] {
+  const raw = readStored<unknown>(DEVICES_KEY, []);
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((entry) => {
+    const device = storedDevice(entry);
+    if (!device) return [];
+    const name = typeof (entry as Record<string, unknown>).name === "string"
+      ? String((entry as Record<string, unknown>).name).trim()
+      : "";
+    return [{ ...device, name: name || `Olive · ${deviceSuffix(device.host)}` }];
+  });
+}
+
+function deviceKey(device: StableOliveTarget): string { return deviceSelectionKey(device); }
+
+function candidateDevice(candidate: Candidate): Device {
+  const descriptionUrl = candidate.descriptionUrl ?? candidate.description;
+  return withCanonicalDeviceIdentity({
+    host: candidate.address,
+    port: candidate.port,
+    ...(candidate.deviceId ? { deviceId: candidate.deviceId } : {}),
+    ...(candidate.udn ? { udn: candidate.udn } : {}),
+    ...(candidate.usn ? { usn: candidate.usn } : {}),
+    ...(descriptionUrl ? { descriptionUrl } : {}),
+    ...(candidate.descriptionUrls?.length ? { descriptionUrls: candidate.descriptionUrls } : {}),
+    ...(candidate.services?.length ? { services: candidate.services } : {}),
+    ...(candidate.serviceTypes?.length ? { serviceTypes: candidate.serviceTypes } : {}),
+    ...(candidate.approvedServiceDeviceIds?.length ? { approvedServiceDeviceIds: candidate.approvedServiceDeviceIds } : {}),
+  });
+}
 
 function deviceSuffix(host: string): string {
   const parts = host.split(".");
@@ -60,15 +154,18 @@ function parsePairs(value: string): Record<string, string> {
 
 export function App() {
   const { t } = useI18n();
-  const initialDevice = readStored<Device>(DEVICE_KEY, { host: "", port: 80 });
-  const [section, setSection] = useState<Section>(initialDevice.host || readStored<SavedOlive[]>(DEVICES_KEY, []).length ? "Home" : "Lab");
+  const initialDevice = storedDevice(readStored<unknown>(DEVICE_KEY, null)) ?? { host: "", port: 80 };
+  const initialSavedDevices = storedSavedDevices();
+  const [section, setSection] = useState<Section>(initialDevice.host || initialSavedDevices.length ? "Home" : "Lab");
   const [host, setHost] = useState(initialDevice.host);
   const [port, setPort] = useState(initialDevice.port);
-  const [connected, setConnected] = useState(Boolean(initialDevice.host));
+  const [deviceDetails, setDeviceDetails] = useState<Device>(initialDevice);
+  const [connected, setConnected] = useState(false);
+  const [connectingKey, setConnectingKey] = useState("");
+  const [deviceAvailability, setDeviceAvailability] = useState<Record<string, OliveAvailability>>({});
   const [modelProfile, setModelProfile] = useState<OliveModelCapabilities | null>(null);
   const [savedDevices, setSavedDevices] = useState<SavedOlive[]>(() => {
-    const stored = readStored<SavedOlive[]>(DEVICES_KEY, []);
-    if (stored.length) return stored;
+    if (initialSavedDevices.length) return initialSavedDevices;
     return initialDevice.host ? [{ ...initialDevice, name: `Olive · ${deviceSuffix(initialDevice.host)}` }] : [];
   });
   const [status, setStatus] = useState(initialDevice.host ? "Connecting…" : "Not connected");
@@ -91,12 +188,37 @@ export function App() {
   const [sectionHistoryDepth, setSectionHistoryDepth] = useState(0);
   const [hasContentBack, setHasContentBack] = useState(false);
   const automaticAttempted = useRef(false);
+  const identifyAttempt = useRef(0);
+  const identifyRequestKey = useRef("");
+  const endpointReconciliationActive = useRef(false);
   const lastNetworkAddress = useRef("");
   const sectionHistory = useRef<Section[]>([]);
   const contentBackHandler = useRef<(() => void) | null>(null);
 
-  const target = useMemo(() => ({ host: host.trim(), port: Number(port) }), [host, port]);
+  const target = useMemo<Device>(() => ({
+    ...deviceDetails,
+    host: host.trim(),
+    port: Number(port),
+  }), [deviceDetails, host, port]);
   const demoActive = isDemoTarget(target);
+
+  function setCurrentDevice(device: Device): void {
+    setHost(device.host);
+    setPort(device.port);
+    setDeviceDetails(device);
+  }
+
+  function clearCurrentDevice(): void {
+    setHost("");
+    setPort(80);
+    setDeviceDetails({ host: "", port: 80 });
+  }
+
+  function invalidateIdentifyAttempts(): void {
+    identifyAttempt.current += 1;
+    identifyRequestKey.current = "";
+    setConnectingKey("");
+  }
 
   const registerContentBack = useCallback((handler: (() => void) | null) => {
     contentBackHandler.current = handler;
@@ -135,6 +257,7 @@ export function App() {
     lastNetworkAddress.current = incoming.localAddress;
     setNetworkState(incoming);
     if (connected && !demoActive && previous && incoming.localAddress && previous !== incoming.localAddress) {
+      invalidateIdentifyAttempts();
       setConnected(false);
       setConnectionProblem("Your network changed. Rejoin the Wi-Fi used by your Olive, then reconnect.");
       setDiscovery({ candidates: [], ssdpResponses: 0 });
@@ -169,47 +292,153 @@ export function App() {
   }, [section, connected, refreshLocalNetwork]);
 
   useEffect(() => {
-    if (connected || discovering || !target.host) return;
+    if (connected || discovering || connectingKey || !target.host) return;
     const retry = window.setInterval(() => {
-      void identifyDevice({ host: target.host, port: target.port });
+      void identifyDevice(target);
     }, 10_000);
     return () => window.clearInterval(retry);
-  }, [connected, discovering, target.host, target.port]);
+  }, [connected, discovering, connectingKey, target]);
+
+  useEffect(() => {
+    if (!connected || demoActive || !target.host) return;
+    let active = true;
+    const reconcileEndpoint = async () => {
+      if (endpointReconciliationActive.current) return;
+      endpointReconciliationActive.current = true;
+      try {
+        const data = await api<DiscoveryResult>("/api/discover", { method: "POST", body: "{}" });
+        if (!active) return;
+        const match = data.candidates
+          .map(candidateDevice)
+          .find((candidate) => devicesReferToSameOlive(candidate, target));
+        if (!match) return;
+        const refreshed = withCanonicalDeviceIdentity(mergeStableOliveTarget(target, match));
+        if (deviceRequestKey(refreshed) === deviceRequestKey(target)) return;
+        setCurrentDevice(refreshed);
+        localStorage.setItem(DEVICE_KEY, JSON.stringify(refreshed));
+        setSavedDevices((items) => {
+          const existing = items.find((item) => devicesReferToSameOlive(item, refreshed));
+          return upsertSavedDevice(items, {
+            ...refreshed,
+            name: existing?.name ?? `Olive · ${deviceSuffix(refreshed.host)}`,
+          });
+        });
+        setStatus(`Olive reconnected · ${refreshed.host}`);
+      } catch {
+        // Playback and catalog retries remain active while SSDP is temporarily
+        // unavailable. The next visibility/interval pass tries again.
+      } finally {
+        endpointReconciliationActive.current = false;
+      }
+    };
+    const interval = window.setInterval(() => void reconcileEndpoint(), 60_000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void reconcileEndpoint();
+    };
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("online", refreshWhenVisible);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("online", refreshWhenVisible);
+    };
+  }, [
+    connected,
+    demoActive,
+    deviceSelectionKey(target),
+    deviceRequestKey(target),
+  ]);
 
   async function autoConnect() {
     const savedDevice = initialDevice.host && ![80, 8163].includes(initialDevice.port)
       ? { ...initialDevice, port: 80 }
       : initialDevice;
-    const choices = [savedDevice, ...savedDevices].filter((device, index, all) => device.host && all.findIndex((candidate) => deviceKey(candidate) === deviceKey(device)) === index);
-    for (const device of choices) if (await identifyDevice(device)) return;
+    const choices = [savedDevice, ...savedDevices].filter((device, index, all) =>
+      device.host && all.findIndex((candidate) => devicesReferToSameOlive(candidate, device)) === index);
+    for (const device of choices) {
+      const previousAttempt = identifyAttempt.current;
+      if (await identifyDevice(device)) return;
+      if (identifyAttempt.current !== previousAttempt + 1) return;
+    }
     await findDevice(true);
   }
 
+  async function enrichDeviceFromDiscovery(device: Device): Promise<Device> {
+    if (isDemoTarget(device)) return device;
+    try {
+      const data = await api<DiscoveryResult>("/api/discover", { method: "POST", body: "{}" });
+      const candidates = data.candidates.map(candidateDevice);
+      const match = candidates.find((candidate) => devicesReferToSameOlive(candidate, device));
+      if (match) return withCanonicalDeviceIdentity(mergeStableOliveTarget(device, match));
+      const endpointReplacement = candidates.find((candidate) =>
+        candidate.host.trim().toLowerCase() === device.host.trim().toLowerCase()
+        && candidate.port === device.port);
+      if (endpointReplacement?.deviceId && device.deviceId) {
+        throw new Error("A different Olive is now using this saved network address. Choose it separately in Find My Olive.");
+      }
+      return device;
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("A different Olive is now using")) throw error;
+      return device;
+    }
+  }
+
   async function identifyDevice(device: Device, suggestedName?: string): Promise<boolean> {
+    const attempt = identifyAttempt.current + 1;
+    const requestKey = deviceRequestKey(device);
+    identifyAttempt.current = attempt;
+    identifyRequestKey.current = requestKey;
+    const selectionKey = deviceKey(device);
+    setConnectingKey(selectionKey);
+    setDeviceAvailability((items) => ({ ...items, [selectionKey]: "checking" }));
+    const isCurrentAttempt = () =>
+      identifyAttempt.current === attempt
+      && identifyRequestKey.current === requestKey;
     try {
       const profile = await api<OliveModelCapabilities>("/api/device/identify", { method: "POST", body: JSON.stringify(device) });
-      setHost(device.host); setPort(device.port); setConnected(true); setModelProfile(profile); setStatus(`${profile.displayName} ${t("connected").toLowerCase()} · ${device.host}`);
-      localStorage.setItem(DEVICE_KEY, JSON.stringify(device));
+      if (!isCurrentAttempt()) return false;
+      const identified = withCanonicalDeviceIdentity(await enrichDeviceFromDiscovery(device));
+      if (!isCurrentAttempt()) return false;
+      const adoptionSources: StableOliveTarget[] = [
+        initialDevice,
+        target,
+        ...savedDevices,
+      ];
+      await adoptDeviceCacheIdentity(identified, adoptionSources);
+      if (!isCurrentAttempt()) return false;
+      adoptDeviceLocalStorage(identified, adoptionSources);
+      if (!isCurrentAttempt()) return false;
+      setCurrentDevice(identified);
+      setConnected(true); setModelProfile(profile); setStatus(`${profile.displayName} ${t("connected").toLowerCase()} · ${identified.host}`);
+      setDeviceAvailability((items) => ({ ...items, [selectionKey]: "online", [deviceKey(identified)]: "online" }));
+      localStorage.setItem(DEVICE_KEY, JSON.stringify(identified));
       setSavedDevices((items) => {
-        const key = deviceKey(device);
-        const existing = items.find((item) => deviceKey(item) === key);
+        const existing = items.find((item) => devicesReferToSameOlive(item, identified));
         const baseName = suggestedName?.trim() || profile.displayName || "Olive";
-        const saved: SavedOlive = { ...device, name: isDemoTarget(device) ? "Preview Library" : existing?.name ?? `${baseName} · ${deviceSuffix(device.host)}` };
-        return existing ? items.map((item) => deviceKey(item) === key ? saved : item) : [...items, saved];
+        const saved: SavedOlive = {
+          ...identified,
+          name: isDemoTarget(identified) ? "Preview Library" : existing?.name ?? `${baseName} · ${deviceSuffix(identified.host)}`,
+        };
+        return upsertSavedDevice(items, saved);
       });
       if (section === "Lab") replaceSection("Home");
       return true;
     } catch (error) {
+      if (!isCurrentAttempt()) return false;
       setConnected(false); setModelProfile(null); setStatus("Looking for your Olive…");
+      setDeviceAvailability((items) => ({ ...items, [selectionKey]: "offline" }));
       setConnectionProblem(error instanceof Error ? error.message : "Your Olive was found, but its controller did not answer.");
       return false;
+    } finally {
+      if (isCurrentAttempt()) setConnectingKey("");
     }
   }
 
   function confirmDevice(device = target, suggestedName?: string) {
     if (!device.host || device.port < 1 || device.port > 65535) { setStatus("Enter a valid local IP and port."); return; }
     setConnectionProblem("");
-    setHost(device.host); setPort(device.port); setConnected(true);
+    setCurrentDevice(device); setConnected(false);
     localStorage.setItem(DEVICE_KEY, JSON.stringify(device));
     setStatus(`Identifying ${device.host}:${device.port}…`);
     void identifyDevice(device, suggestedName);
@@ -218,8 +447,8 @@ export function App() {
   function switchDevice(key: string) {
     const device = savedDevices.find((item) => deviceKey(item) === key);
     if (!device || (deviceKey(target) === key && connected)) return;
-    setConnected(false); setHost(device.host); setPort(device.port); setStatus(`Connecting to ${device.name}…`);
-    localStorage.setItem(DEVICE_KEY, JSON.stringify({ host: device.host, port: device.port }));
+    setConnected(false); setCurrentDevice(device); setStatus(`Connecting to ${device.name}…`);
+    localStorage.setItem(DEVICE_KEY, JSON.stringify(device));
     void identifyDevice(device);
   }
 
@@ -229,9 +458,16 @@ export function App() {
     setSavedDevices((items) => items.filter((item) => deviceKey(item) !== key));
     void clearDeviceCache(device);
     if (deviceKey(target) !== key) return;
-    setConnected(false); setHost(""); setPort(80); setModelProfile(null);
+    invalidateIdentifyAttempts();
+    setConnected(false); clearCurrentDevice(); setModelProfile(null);
     localStorage.removeItem(DEVICE_KEY);
     setStatus("Olive forgotten"); replaceSection("Lab");
+  }
+
+  function renameDevice(key: string, nextName: string) {
+    const name = nextName.trim().slice(0, 50);
+    if (!name) return;
+    setSavedDevices((items) => items.map((item) => deviceKey(item) === key ? { ...item, name } : item));
   }
 
   function startDemo() {
@@ -241,7 +477,8 @@ export function App() {
   }
 
   function exitDemo() {
-    setConnected(false); setHost(""); setPort(80); setModelProfile(null);
+    invalidateIdentifyAttempts();
+    setConnected(false); clearCurrentDevice(); setModelProfile(null);
     setSavedDevices((items) => items.filter((item) => !isDemoTarget(item)));
     localStorage.removeItem(DEVICE_KEY);
     setStatus("Not connected"); replaceSection("Lab");
@@ -259,6 +496,7 @@ export function App() {
   }
 
   async function findDevice(autoSelect = false) {
+    invalidateIdentifyAttempts();
     setSearchAttempted(true); setConnectionProblem(""); setDiscovering(true); setDiscovery(null); setStatus("Searching for your Olive…");
     try {
       const localNetwork = await refreshLocalNetwork();
@@ -270,9 +508,18 @@ export function App() {
       }
       const data = await api<DiscoveryResult>("/api/discover", { method: "POST", body: "{}" });
       setDiscovery(data);
+      setDeviceAvailability((items) => {
+        const next = { ...items };
+        for (const saved of savedDevices) {
+          if (data.candidates.some((candidate) => devicesReferToSameOlive(saved, candidateDevice(candidate)))) {
+            next[deviceKey(saved)] = "online";
+          }
+        }
+        return next;
+      });
       if ((autoSelect || data.candidates.length === 1) && data.candidates[0]) {
         const candidate = data.candidates[0];
-        confirmDevice({ host: candidate.address, port: candidate.port }, candidate.name);
+        confirmDevice(candidateDevice(candidate), candidate.name);
       } else {
         if (!data.candidates.length) setConnectionProblem(localNetwork?.vpnActive ? "A VPN is active and may be blocking discovery." : "Your Olive did not answer on this local network.");
         setStatus(data.candidates.length ? `Found ${data.candidates.length} candidate${data.candidates.length === 1 ? "" : "s"}` : "No candidate found. Manual entry remains available.");
@@ -310,14 +557,20 @@ export function App() {
   const parsed = result ? parseResponseBody(result.body, result.headers["content-type"] ?? "") : null;
   const sectionLabel: Record<Section, string> = { Home: t("home"), Library: t("library"), Search: t("search"), Playlists: t("playlists"), "Add Music": t("addMusic"), Lab: "Find My Olive", Settings: t("settings") };
 
-  return <PlaybackProvider connected={connected} target={target} volumeControlEnabled={demoActive || modelProfile?.model === "o4hd"} onStatus={setStatus}><div className="app-shell">
+  return <PlaybackProvider
+    connected={connected}
+    target={target}
+    volumeControlEnabled={demoActive || modelProfile?.model === "o4hd"}
+    seekControlEnabled={demoActive || modelProfile?.seekControl === "verified"}
+    onStatus={setStatus}
+  ><div className="app-shell">
     <aside className="sidebar">
       <div className="brand"><img className="brand-mark" src="/icon.svg" alt="" /><div><strong>Olive Remote</strong></div></div>
       <nav>{sections.map((item) => <button className={section === item ? "active" : ""} aria-current={section === item ? "page" : undefined} onClick={() => navigate(item)} key={item}><Icon name={navIcons[item]} />{sectionLabel[item]}</button>)}</nav>
     </aside>
 
     <main>
-      <header><div className="header-leading">{(hasContentBack || sectionHistoryDepth > 0) && <button className="app-back" onClick={goBack} aria-label="Back"><Icon name="back" /><span>Back</span></button>}<h1>{sectionLabel[section]}</h1></div>{savedDevices.length > 1 ? <label className={`device-switcher ${connected ? "online" : ""}`}><i /><span className="sr-only">Active Olive</span><select value={deviceKey(target)} onChange={(event) => switchDevice(event.target.value)} aria-label="Active Olive">{savedDevices.map((device) => <option key={deviceKey(device)} value={deviceKey(device)}>{device.name}</option>)}</select></label> : section !== "Settings" && <div className={`connection-pill ${connected ? "online" : ""}`}><i />{connected ? t("connected") : status}</div>}</header>
+      <header><div className="header-leading">{(hasContentBack || sectionHistoryDepth > 0) && <button className="app-back" onClick={goBack} aria-label="Back"><Icon name="back" /><span>Back</span></button>}<h1>{sectionLabel[section]}</h1></div>{savedDevices.length > 1 ? <label className={`device-switcher ${connected ? "online" : ""}`}><i /><span className="sr-only">Active Olive</span><select value={deviceKey(target)} onChange={(event) => switchDevice(event.target.value)} aria-label="Active Olive">{savedDevices.map((device) => { const availability = deviceAvailability[deviceKey(device)] ?? "unknown"; const mark = availability === "online" ? "●" : availability === "checking" ? "◌" : "○"; const label = availability === "online" ? "Online" : availability === "checking" ? "Checking" : availability === "offline" ? "Offline" : "Not checked"; return <option key={deviceKey(device)} value={deviceKey(device)}>{mark} {device.name} — {label}</option>; })}</select></label> : section !== "Settings" && <div className={`connection-pill ${connected ? "online" : ""}`}><i />{connected ? t("connected") : status}</div>}</header>
       {demoActive && <div className="demo-banner" role="status"><span><strong>Preview library</strong> · fictional content</span><button onClick={exitDemo}>Use my Olive</button></div>}
       <LibraryCatalogSync connected={connected} target={target} />
 
@@ -326,7 +579,7 @@ export function App() {
         : section === "Search" ? <SearchView connected={connected} target={target} onStatus={setStatus} onRegisterBack={registerContentBack} />
         : section === "Playlists" ? <PlaylistsView connected={connected} target={target} onStatus={setStatus} onRegisterBack={registerContentBack} />
         : section === "Add Music" ? <AddMusicView connected={connected} target={target} />
-        : section === "Settings" ? <SettingsView target={target} savedDevices={savedDevices} connected={connected} onSelect={switchDevice} onForget={forgetDevice} onOpenLab={() => navigate("Lab")} onExportDiagnostics={exportDiagnostics} />
+        : section === "Settings" ? <SettingsView target={target} savedDevices={savedDevices} connected={connected} availability={deviceAvailability} onSelect={switchDevice} onRename={renameDevice} onForget={forgetDevice} onOpenLab={() => navigate("Lab")} onExportDiagnostics={exportDiagnostics} />
         : section !== "Lab" ? null : <>
         <section className="card find-olive-card">
           <div className="find-olive-copy"><span className="connection-eyebrow">LOCAL CONNECTION</span><h2>Find your Olive</h2><p>Olive Remote connects directly to your music server at home. No account or internet connection is required.</p></div>
@@ -344,12 +597,12 @@ export function App() {
         </section>
 
         {discovery && <section className="card results-card"><div className="section-heading"><div><h2>{discovery.candidates.length ? "Choose your Olive" : "Connection help"}</h2></div></div>
-          {discovery.candidates.length === 0 ? <div className="connection-help"><strong>{connectionProblem || "We couldn’t find your Olive yet."}</strong><p>Check that it is awake and connected to the same home router, then try again. Turn off guest Wi-Fi or a VPN while connecting.</p><div className="connection-help-actions"><button onClick={() => void findDevice(false)} disabled={discovering}>Try Again</button>{isNativeApp && <button className="secondary" onClick={() => void openNetworkSettings()}>{networkState?.settingsLabel ?? "Open Settings"}</button>}</div></div> : <div className="candidate-list">{discovery.candidates.map((candidate) => <article key={`${candidate.address}:${candidate.port}`}><div><strong>{candidate.name}</strong><small>Olive found at {candidate.address}</small></div><button onClick={() => confirmDevice({ host: candidate.address, port: candidate.port }, candidate.name)}>Connect</button></article>)}</div>}
+          {discovery.candidates.length === 0 ? <div className="connection-help"><strong>{connectionProblem || "We couldn’t find your Olive yet."}</strong><p>Check that it is awake and connected to the same home router, then try again. Turn off guest Wi-Fi or a VPN while connecting.</p><div className="connection-help-actions"><button onClick={() => void findDevice(false)} disabled={discovering}>Try Again</button>{isNativeApp && <button className="secondary" onClick={() => void openNetworkSettings()}>{networkState?.settingsLabel ?? "Open Settings"}</button>}</div></div> : <div className="candidate-list">{discovery.candidates.map((candidate) => { const candidateKey = deviceKey(candidateDevice(candidate)); const connecting = connectingKey === candidateKey; return <article key={candidateKey}><div><strong>{candidate.name}</strong><small>Olive found at {candidate.address}</small></div><button onClick={() => confirmDevice(candidateDevice(candidate), candidate.name)} disabled={Boolean(connectingKey)} aria-busy={connecting}>{connecting && <span className="spinner" />}{connecting ? "Connecting…" : "Connect"}</button></article>; })}</div>}
         </section>}
 
-        <details className="card manual-connection"><summary>Enter the Olive address manually</summary><p>If automatic discovery does not work, find the IP address in your Olive’s network settings. On most models, open <strong>Settings → Network</strong> on the Olive display.</p><div className="address-row"><label><span>IP address or .local name</span><input value={host} onChange={(event) => { setHost(event.target.value); setConnected(false); }} placeholder="192.168.1.42" /></label><label className="port"><span>Port</span><input type="number" min="1" max="65535" value={port} onChange={(event) => setPort(Number(event.target.value))} /></label><button onClick={() => confirmDevice()} disabled={!host}>Connect</button></div></details>
+        <details className="card manual-connection"><summary>Enter the Olive address manually</summary><p>If automatic discovery does not work, find the IP address in your Olive’s network settings. On most models, open <strong>Settings → Network</strong> on the Olive display.</p><div className="address-row"><label><span>IP address or .local name</span><input value={host} onChange={(event) => { const nextHost = event.target.value; setHost(nextHost); setDeviceDetails({ host: nextHost, port }); setConnected(false); }} placeholder="192.168.1.42" /></label><label className="port"><span>Port</span><input type="number" min="1" max="65535" value={port} onChange={(event) => { const nextPort = Number(event.target.value); setPort(nextPort); setDeviceDetails({ host, port: nextPort }); }} /></label><button onClick={() => confirmDevice()} disabled={!host || Boolean(connectingKey)} aria-busy={Boolean(connectingKey)}>{connectingKey && <span className="spinner" />}{connectingKey ? "Connecting…" : "Connect"}</button></div></details>
 
-        {!isNativeApp && <details className="advanced-protocol"><summary>Advanced diagnostics</summary><div>
+        {!isNativeApp && import.meta.env.DEV && <details className="advanced-protocol"><summary>Advanced diagnostics</summary><div>
 
         <section className="card results-card">
           <div className="section-heading"><div><span className="step">02</span><h2>Endpoint tester</h2></div><button onClick={runProbe} disabled={probing || !host} className="secondary">{probing ? "Testing…" : "Test known paths"}</button></div>

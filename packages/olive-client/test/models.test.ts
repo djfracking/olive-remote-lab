@@ -9,6 +9,7 @@ describe("model capability registry", () => {
   it("keeps unverified models disabled", () => {
     expect(capabilitiesForModel("o6hd").maestroLibrary).toBe("unverified");
     expect(capabilitiesForModel("o4hd").maestroLibrary).toBe("verified");
+    expect(capabilitiesForModel("o4hd").seekControl).toBe("unverified");
   });
 
   it("covers the early, Maestro, HD and ONE protocol families", () => {

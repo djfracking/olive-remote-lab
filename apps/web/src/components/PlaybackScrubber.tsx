@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { isDemoTarget } from "../demoOlive";
 import { usePlaybackActions, usePlaybackState } from "../playback/PlaybackProvider";
+import { playbackProgress } from "../playback/playbackState";
 
 interface Props {
   className: "hero-progress" | "mini-progress";
@@ -14,7 +16,14 @@ function formatTime(value: number | null): string {
 export function PlaybackScrubber({ className }: Props) {
   const [dragPosition, setDragPosition] = useState<number | null>(null);
   const seeking = useRef(false);
-  const { connected, nowPlaying, commandPending } = usePlaybackState();
+  const {
+    connected,
+    target,
+    nowPlaying,
+    commandPending,
+    seekControlEnabled,
+    livePositionTelemetry,
+  } = usePlaybackState();
   const { seek } = usePlaybackActions();
   const itemId = nowPlaying?.itemId ?? "";
   const position = nowPlaying?.positionSeconds ?? null;
@@ -24,10 +33,10 @@ export function PlaybackScrubber({ className }: Props) {
     setDragPosition(null);
   }, [itemId]);
 
-  const canSeek = connected && !commandPending && position !== null && duration !== null && duration > 0;
-  const shownPosition = dragPosition ?? position;
-  const progress = shownPosition !== null && duration !== null && duration > 0
-    ? Math.min(100, Math.max(0, shownPosition / duration * 100)) : 0;
+  const progress = playbackProgress(dragPosition ?? position, duration);
+  const shownPosition = progress?.positionSeconds ?? dragPosition ?? position;
+  const telemetryReady = livePositionTelemetry || isDemoTarget(target);
+  const canSeek = connected && seekControlEnabled && telemetryReady && !commandPending && progress !== null;
 
   async function commitSeek(value: number) {
     if (!canSeek || seeking.current) return;
@@ -39,17 +48,37 @@ export function PlaybackScrubber({ className }: Props) {
     finally { seeking.current = false; }
   }
 
-  return <div className={`${className} ${canSeek ? "scrubbable" : "indeterminate"}`} aria-label={`Playback position ${formatTime(shownPosition)} of ${formatTime(duration)}`}>
+  const progressLabel = `Playback position ${formatTime(shownPosition)} of ${formatTime(duration)}`;
+  const modeLabel = !seekControlEnabled
+    ? "Live playback progress. Seeking is not verified for this Olive."
+    : telemetryReady
+      ? "Drag the playback position to seek."
+      : "Live playback progress is temporarily unavailable, so seeking is paused.";
+
+  return <div
+    className={`${className} ${progress ? "determinate" : "indeterminate"} ${canSeek ? "scrubbable" : "read-only"}`}
+    aria-label={progressLabel}
+    title={modeLabel}
+  >
     <div><span>{formatTime(shownPosition)}</span><span>{formatTime(duration)}</span></div>
     <span className="scrub-rail">
-      <i><b style={{ width: `${progress}%` }} /></i>
-      {canSeek && <input type="range" min="0" max={duration!} step="1" value={shownPosition ?? 0}
-        aria-label="Seek through track" aria-valuetext={`${formatTime(shownPosition)} of ${formatTime(duration)}`}
+      <i
+        role="progressbar"
+        aria-label="Live playback progress"
+        aria-valuemin={0}
+        aria-valuemax={progress?.durationSeconds}
+        aria-valuenow={progress?.positionSeconds}
+        aria-valuetext={progressLabel}
+      ><b style={{ width: `${progress?.percent ?? 0}%` }} /></i>
+      {canSeek && <input type="range" min="0" max={progress.durationSeconds} step="1" value={progress.positionSeconds}
+        aria-label="Seek through track" aria-valuetext={progressLabel}
         onPointerDown={() => setDragPosition(shownPosition ?? 0)}
         onInput={(event) => setDragPosition(Number(event.currentTarget.value))}
         onChange={(event) => setDragPosition(Number(event.currentTarget.value))}
         onPointerUp={(event) => void commitSeek(Number(event.currentTarget.value))}
+        onPointerCancel={() => setDragPosition(null)}
         onKeyUp={(event) => { if (["ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"].includes(event.key)) void commitSeek(Number(event.currentTarget.value)); }} />}
     </span>
+    <span className="sr-only">{modeLabel}</span>
   </div>;
 }

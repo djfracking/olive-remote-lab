@@ -19,30 +19,47 @@ import { appFetch, isNativeApp } from "../nativeApi";
 import { isDemoTarget } from "../demoOlive";
 import {
   clearSystemPlayback,
+  readSystemPlayback,
   subscribeSystemPlaybackCommands,
   updateSystemPlayback,
 } from "../systemPlayback";
 import {
   queueFromNode,
   readQueue,
+  queuedTrackNode,
   writeQueue,
   type QueuedTrack,
 } from "../playbackQueue";
+import { deviceCacheNamespace, deviceRequestKey, type StableOliveTarget } from "../deviceIdentity";
+import { PLAYBACK_METADATA_STORAGE_KEY } from "../deviceStorageMigration";
+import { resolveMaestroPlaybackNode } from "../playbackIdentity";
+import { isUpnpTreeNode, maestroPlaybackId } from "../upnpCatalog";
 import {
   adjacentTrack,
+  inferredNaturalNext,
+  isPlaybackContextBoundary,
   mergeMatchingObservation,
   mergeTrackMetadata,
   normalizeObservation,
+  observationIndicatesNaturalRollover,
+  hasLivePositionTelemetry,
   playbackTrackFromNode,
   projectPosition,
+  reconcileUpnpPlaybackObservation,
+  renderingTelemetryFromPlayerState,
   snapshotForTrack,
   stoppedSnapshot,
+  type PlaybackRenderingTelemetry,
   type PlaybackTrack,
+  type UpnpPlayerStateResponse,
 } from "./playbackState";
 
-const METADATA_CACHE_KEY = "olive-playback-metadata-v2";
 const METADATA_TTL_MS = 24 * 60 * 60 * 1_000;
 const OBSERVATION_HOLD_MS = 6_000;
+const UPNP_TELEMETRY_TTL_MS = 5_000;
+const IDENTITYLESS_DEFAULT_HOLD_MS = 30_000;
+const IDENTITYLESS_END_GRACE_MS = 15_000;
+const IDENTITYLESS_MAX_HOLD_MS = 4 * 60 * 60 * 1_000;
 
 interface CachedMetadata {
   metadata: MaestroTrackMetadata;
@@ -56,12 +73,19 @@ interface ConfirmedState {
   context: PlaybackTrack[];
 }
 
+type RolloverAction =
+  | { kind: "play"; track: PlaybackTrack; context: PlaybackTrack[] }
+  | { kind: "stop"; context: PlaybackTrack[] };
+
 interface PlaybackStateValue {
   connected: boolean;
   target: OliveDeviceTarget;
   nowPlaying: NowPlayingSnapshot | null;
   commandPending: boolean;
   volumeControlEnabled: boolean;
+  seekControlEnabled: boolean;
+  livePositionTelemetry: boolean;
+  renderingTelemetry: PlaybackRenderingTelemetry | null;
   queue: QueuedTrack[];
 }
 
@@ -70,7 +94,8 @@ interface PlaybackActionsValue {
   playQueuedTrack: (track: QueuedTrack) => Promise<void>;
   control: (action: "pause" | "stop" | "previous" | "next") => Promise<void>;
   seek: (positionSeconds: number) => Promise<void>;
-  volume: (action: "volumeDown" | "mute" | "volumeUp") => Promise<void>;
+  setVolume: (level: number) => Promise<void>;
+  setMuted: (muted: boolean) => Promise<void>;
   enqueue: (node: MaestroTreeNode) => void;
   moveQueueItem: (index: number, offset: number) => void;
   removeQueueItem: (queueId: string) => void;
@@ -81,16 +106,27 @@ const PlaybackStateContext = createContext<PlaybackStateValue | null>(null);
 const PlaybackActionsContext = createContext<PlaybackActionsValue | null>(null);
 
 function targetKey(target: OliveDeviceTarget): string {
-  return `${target.host.trim().toLowerCase()}:${target.port}`;
+  return deviceCacheNamespace(target as StableOliveTarget);
 }
 
 function cacheKey(target: OliveDeviceTarget, itemId: string): string {
   return `${targetKey(target)}:${itemId}`;
 }
 
+function identitylessHoldMs(current: NowPlayingSnapshot, sampledAt: number): number {
+  const projected = projectPosition(current, sampledAt) ?? current;
+  const durationSeconds = current.durationSeconds ?? current.metadata?.durationSeconds ?? null;
+  if (durationSeconds === null || projected.positionSeconds === null) return IDENTITYLESS_DEFAULT_HOLD_MS;
+  const remainingMs = Math.max(0, durationSeconds - projected.positionSeconds) * 1_000;
+  return Math.min(IDENTITYLESS_MAX_HOLD_MS, Math.max(
+    IDENTITYLESS_END_GRACE_MS,
+    remainingMs + IDENTITYLESS_END_GRACE_MS,
+  ));
+}
+
 function readMetadataCache(): Record<string, CachedMetadata> {
   try {
-    const parsed = JSON.parse(localStorage.getItem(METADATA_CACHE_KEY) ?? "{}") as Record<string, CachedMetadata>;
+    const parsed = JSON.parse(localStorage.getItem(PLAYBACK_METADATA_STORAGE_KEY) ?? "{}") as Record<string, CachedMetadata>;
     const cutoff = Date.now() - METADATA_TTL_MS;
     return Object.fromEntries(Object.entries(parsed).filter(([, value]) => value?.cachedAt >= cutoff && Boolean(value.metadata?.title)));
   } catch { return {}; }
@@ -127,18 +163,23 @@ export function PlaybackProvider({
   connected,
   target,
   volumeControlEnabled,
+  seekControlEnabled,
   onStatus,
   children,
 }: {
   connected: boolean;
   target: OliveDeviceTarget;
   volumeControlEnabled: boolean;
+  seekControlEnabled: boolean;
   onStatus: (status: string) => void;
   children: ReactNode;
 }) {
   const [snapshot, setSnapshotState] = useState<NowPlayingSnapshot | null>(null);
   const [tick, setTick] = useState(() => Date.now());
   const [pendingCommands, setPendingCommands] = useState(0);
+  const [livePositionTelemetry, setLivePositionTelemetry] = useState(false);
+  const [renderingTelemetry, setRenderingTelemetry] = useState<PlaybackRenderingTelemetry | null>(null);
+  const [rolloverActionRevision, setRolloverActionRevision] = useState(0);
   const [queue, setQueueState] = useState<QueuedTrack[]>(() => readQueue(target));
   const snapshotRef = useRef<NowPlayingSnapshot | null>(null);
   const queueRef = useRef(queue);
@@ -150,12 +191,25 @@ export function PlaybackProvider({
   const pendingCommandsRef = useRef(0);
   const generationRef = useRef(0);
   const pollActiveRef = useRef(false);
+  const upnpPollActiveRef = useRef(false);
+  const upnpPollSequenceRef = useRef(0);
   const commandTailRef = useRef<Promise<void>>(Promise.resolve());
   const holdConflictsUntilRef = useRef(0);
+  const identityMissingUntilRef = useRef(0);
   const conflictRef = useRef<{ itemId: string; count: number } | null>(null);
   const metadataCacheRef = useRef<Record<string, CachedMetadata>>(readMetadataCache());
+  const latestUpnpTelemetryRef = useRef<UpnpPlayerStateResponse | null>(null);
   const reconcileTimersRef = useRef<number[]>([]);
+  const rolloverActionRef = useRef<RolloverAction | null>(null);
   const activeTargetKey = targetKey(target);
+  const activeEndpointKey = deviceRequestKey(target as StableOliveTarget);
+  const activeEndpointKeyRef = useRef(activeEndpointKey);
+  activeEndpointKeyRef.current = activeEndpointKey;
+
+  const playbackTargetIsCurrent = useCallback((
+    generation: number,
+    endpointKey: string,
+  ) => generation === generationRef.current && endpointKey === activeEndpointKeyRef.current, []);
 
   const setSnapshot = useCallback((next: NowPlayingSnapshot | null) => {
     snapshotRef.current = next;
@@ -181,7 +235,7 @@ export function PlaybackProvider({
       metadata: mergeTrackMetadata(itemId, metadata),
       cachedAt: Date.now(),
     };
-    try { localStorage.setItem(METADATA_CACHE_KEY, JSON.stringify(metadataCacheRef.current)); }
+    try { localStorage.setItem(PLAYBACK_METADATA_STORAGE_KEY, JSON.stringify(metadataCacheRef.current)); }
     catch { /* Metadata caching is best effort. */ }
   }, [target]);
 
@@ -207,11 +261,157 @@ export function PlaybackProvider({
     }
   }, []);
 
+  const applyObserved = useCallback((observed: NowPlayingSnapshot) => {
+    if (observed.metadata) rememberMetadata(observed.itemId, observed.metadata);
+    const current = snapshotRef.current;
+    if (!ownsIdentityRef.current) {
+      setSnapshot(observed);
+      confirmedRef.current = { snapshot: observed, ownsIdentity: false, ownedItemId: "", context: contextRef.current };
+      identityMissingUntilRef.current = 0;
+      conflictRef.current = null;
+      return;
+    }
+
+    const ownedItemId = ownedItemIdRef.current;
+    const commandProtected = Date.now() < holdConflictsUntilRef.current || pendingCommandsRef.current > 0;
+    if (
+      current
+      && !commandProtected
+      && contextRef.current.some((track) => track.itemId === current.itemId)
+      && observationIndicatesNaturalRollover(current, observed)
+    ) {
+      const nextTrack = inferredNaturalNext(contextRef.current, current, observed);
+      if (nextTrack) {
+        const observedDurationLooksNew = observed.durationSeconds !== null
+          && observed.durationSeconds !== current.durationSeconds;
+        const adopted: NowPlayingSnapshot = {
+          ...snapshotForTrack(nextTrack, observed.sampledAt),
+          transportState: observed.transportState === "unknown" ? "playing" : observed.transportState,
+          positionSeconds: observed.positionSeconds ?? 0,
+          durationSeconds: nextTrack.metadata.durationSeconds
+            ?? (observedDurationLooksNew ? observed.durationSeconds : null),
+        };
+        setSnapshot(adopted);
+        ownsIdentityRef.current = true;
+        ownedItemIdRef.current = nextTrack.itemId;
+        identityMissingUntilRef.current = 0;
+        conflictRef.current = null;
+        rememberMetadata(nextTrack.itemId, nextTrack.metadata);
+        if (
+          observed.identitySource === "device"
+          && observed.itemId
+          && observed.itemId !== nextTrack.itemId
+        ) {
+          rolloverActionRef.current = {
+            kind: "play",
+            track: nextTrack,
+            context: [...contextRef.current],
+          };
+          setRolloverActionRevision((value) => value + 1);
+        } else {
+          confirmedRef.current = {
+            snapshot: adopted,
+            ownsIdentity: true,
+            ownedItemId: nextTrack.itemId,
+            context: contextRef.current,
+          };
+        }
+        return;
+      }
+      const stopped = stoppedSnapshot(observed.sampledAt);
+      setSnapshot(stopped);
+      ownsIdentityRef.current = true;
+      ownedItemIdRef.current = "";
+      identityMissingUntilRef.current = 0;
+      conflictRef.current = null;
+      rolloverActionRef.current = { kind: "stop", context: [...contextRef.current] };
+      setRolloverActionRevision((value) => value + 1);
+      return;
+    }
+    if (observed.itemId === ownedItemId && current) {
+      const merged = mergeMatchingObservation(current, observed);
+      setSnapshot(merged);
+      confirmedRef.current = { snapshot: merged, ownsIdentity: true, ownedItemId, context: contextRef.current };
+      identityMissingUntilRef.current = 0;
+      conflictRef.current = null;
+      return;
+    }
+    if (ownedItemId && observed.identitySource !== "device" && observed.transportState !== "stopped" && current) {
+      const merged = mergeMatchingObservation(current, {
+        ...observed,
+        itemId: current.itemId,
+        metadata: null,
+        identitySource: current.identitySource,
+      });
+      setSnapshot(merged);
+      if (observed.identitySource === "command-fallback") {
+        identityMissingUntilRef.current = 0;
+        return;
+      }
+      if (commandProtected) return;
+      if (!identityMissingUntilRef.current) {
+        identityMissingUntilRef.current = observed.sampledAt + identitylessHoldMs(current, observed.sampledAt);
+      }
+      if (observed.sampledAt < identityMissingUntilRef.current) return;
+      setSnapshot(observed);
+      ownsIdentityRef.current = false;
+      ownedItemIdRef.current = "";
+      confirmedRef.current = { snapshot: observed, ownsIdentity: false, ownedItemId: "", context: contextRef.current };
+      identityMissingUntilRef.current = 0;
+      conflictRef.current = null;
+      return;
+    }
+    if (!ownedItemId && observed.transportState === "stopped") {
+      setSnapshot(observed);
+      confirmedRef.current = { snapshot: observed, ownsIdentity: true, ownedItemId: "", context: contextRef.current };
+      identityMissingUntilRef.current = 0;
+      conflictRef.current = null;
+      return;
+    }
+    if (commandProtected) return;
+
+    const conflictItemId = observed.transportState === "stopped" ? "[stopped]" : observed.itemId;
+    const previousConflict = conflictRef.current;
+    conflictRef.current = previousConflict?.itemId === conflictItemId
+      ? { itemId: conflictItemId, count: previousConflict.count + 1 }
+      : { itemId: conflictItemId, count: 1 };
+    const knownTrack = contextRef.current.find((track) => track.itemId === observed.itemId);
+    const expectedNext = current ? adjacentTrack(contextRef.current, current.itemId, "next") : null;
+    const projectedCurrent = projectPosition(current);
+    const isExpectedNaturalAdvance = Boolean(
+      knownTrack
+      && expectedNext?.itemId === knownTrack.itemId
+      && projectedCurrent?.durationSeconds !== null
+      && projectedCurrent?.durationSeconds !== undefined
+      && projectedCurrent.positionSeconds !== null
+      && projectedCurrent.positionSeconds >= projectedCurrent.durationSeconds - 2,
+    );
+    const requiredObservations = observed.identitySource === "device" || isExpectedNaturalAdvance ? 1 : 2;
+    if (conflictRef.current.count < requiredObservations) return;
+
+    const adopted = knownTrack && observed.transportState !== "stopped"
+      ? mergeMatchingObservation(snapshotForTrack(knownTrack), {
+        ...observed,
+        metadata: mergeTrackMetadata(knownTrack.itemId, knownTrack.metadata, observed.metadata),
+      })
+      : observed;
+    setSnapshot(adopted);
+    ownsIdentityRef.current = Boolean(knownTrack);
+    ownedItemIdRef.current = knownTrack?.itemId ?? "";
+    confirmedRef.current = {
+      snapshot: adopted,
+      ownsIdentity: ownsIdentityRef.current,
+      ownedItemId: ownedItemIdRef.current,
+      context: contextRef.current,
+    };
+    identityMissingUntilRef.current = 0;
+    conflictRef.current = null;
+  }, [rememberMetadata, setSnapshot]);
+
   const refreshNowPlaying = useCallback(async () => {
     if (!connected || !target.host || document.visibilityState !== "visible" || pollActiveRef.current) return;
     const generation = generationRef.current;
     const revision = revisionRef.current;
-    const requestedTargetKey = activeTargetKey;
     pollActiveRef.current = true;
     try {
       const response = await appFetch("/api/now-playing", {
@@ -221,102 +421,87 @@ export function PlaybackProvider({
       });
       if (!response.ok) return;
       const incoming = await response.json() as Partial<NowPlayingSnapshot> & Pick<NowPlayingSnapshot, "itemId" | "metadata">;
-      if (generation !== generationRef.current || revision < revisionRef.current || requestedTargetKey !== activeTargetKey) return;
-      const observed = normalizeObservation(incoming, cachedMetadata(incoming.itemId));
-      if (observed.metadata) rememberMetadata(observed.itemId, observed.metadata);
-
-      const current = snapshotRef.current;
-      if (!ownsIdentityRef.current) {
-        setSnapshot(observed);
-        confirmedRef.current = { snapshot: observed, ownsIdentity: false, ownedItemId: "", context: contextRef.current };
-        conflictRef.current = null;
-        return;
-      }
-
-      const ownedItemId = ownedItemIdRef.current;
-      if (observed.itemId === ownedItemId && current) {
-        const merged = mergeMatchingObservation(current, observed);
-        setSnapshot(merged);
-        confirmedRef.current = { snapshot: merged, ownsIdentity: true, ownedItemId, context: contextRef.current };
-        conflictRef.current = null;
-        return;
-      }
-      if (ownedItemId && !observed.itemId && observed.transportState !== "stopped" && current) {
-        const projected = projectPosition(current) ?? current;
-        const merged = {
-          ...projected,
-          transportState: observed.transportState === "unknown" ? current.transportState : observed.transportState,
-          positionSeconds: observed.positionSeconds ?? projected.positionSeconds,
-          durationSeconds: observed.durationSeconds ?? current.durationSeconds,
-          sampledAt: Date.now(),
-        };
-        setSnapshot(merged);
-        return;
-      }
-      if (!ownedItemId && observed.transportState === "stopped") {
-        setSnapshot(observed);
-        confirmedRef.current = { snapshot: observed, ownsIdentity: true, ownedItemId: "", context: contextRef.current };
-        conflictRef.current = null;
-        return;
-      }
-      if (Date.now() < holdConflictsUntilRef.current || pendingCommandsRef.current > 0) return;
-
-      const conflictItemId = observed.transportState === "stopped" ? "[stopped]" : observed.itemId;
-      const previousConflict = conflictRef.current;
-      conflictRef.current = previousConflict?.itemId === conflictItemId
-        ? { itemId: conflictItemId, count: previousConflict.count + 1 }
-        : { itemId: conflictItemId, count: 1 };
-      const knownTrack = contextRef.current.find((track) => track.itemId === observed.itemId);
-      const expectedNext = current ? adjacentTrack(contextRef.current, current.itemId, "next") : null;
-      const projectedCurrent = projectPosition(current);
-      const isExpectedNaturalAdvance = Boolean(
-        knownTrack
-        && expectedNext?.itemId === knownTrack.itemId
-        && projectedCurrent?.durationSeconds !== null
-        && projectedCurrent?.durationSeconds !== undefined
-        && projectedCurrent.positionSeconds !== null
-        && projectedCurrent.positionSeconds >= projectedCurrent.durationSeconds - 2,
-      );
-      if (conflictRef.current.count < (isExpectedNaturalAdvance ? 1 : 2)) return;
-
-      const adopted = knownTrack && observed.transportState !== "stopped"
-        ? mergeMatchingObservation(snapshotForTrack(knownTrack), {
-          ...observed,
-          metadata: mergeTrackMetadata(knownTrack.itemId, knownTrack.metadata, observed.metadata),
-        })
-        : observed;
-      setSnapshot(adopted);
-      ownsIdentityRef.current = Boolean(knownTrack);
-      ownedItemIdRef.current = knownTrack?.itemId ?? "";
-      confirmedRef.current = {
-        snapshot: adopted,
-        ownsIdentity: ownsIdentityRef.current,
-        ownedItemId: ownedItemIdRef.current,
-        context: contextRef.current,
-      };
-      conflictRef.current = null;
+      if (generation !== generationRef.current || revision < revisionRef.current) return;
+      const legacyObservation = normalizeObservation(incoming, cachedMetadata(incoming.itemId));
+      const upnp = latestUpnpTelemetryRef.current;
+      const observed = upnp && Date.now() - upnp.sampledAt <= UPNP_TELEMETRY_TTL_MS
+        ? reconcileUpnpPlaybackObservation(legacyObservation, upnp) ?? legacyObservation
+        : legacyObservation;
+      applyObserved(observed);
     } catch { /* Connection status and later polls handle temporary failures. */ }
     finally {
       if (generation === generationRef.current) pollActiveRef.current = false;
     }
-  }, [activeTargetKey, cachedMetadata, connected, rememberMetadata, setSnapshot, target]);
+  }, [applyObserved, cachedMetadata, connected, target]);
+
+  const refreshUpnpPlayerState = useCallback(async (
+    options: { includeRendering?: boolean; includeMedia?: boolean } = {},
+  ) => {
+    if (
+      !connected
+      || !target.host
+      || isDemoTarget(target)
+      || document.visibilityState !== "visible"
+      || upnpPollActiveRef.current
+    ) return;
+    const generation = generationRef.current;
+    const revision = revisionRef.current;
+    upnpPollActiveRef.current = true;
+    try {
+      const response = await appFetch("/api/upnp/player-state", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...target, ...options }),
+      });
+      if (!response.ok) return;
+      const telemetry = await response.json() as UpnpPlayerStateResponse;
+      if (generation !== generationRef.current || revision < revisionRef.current) return;
+      latestUpnpTelemetryRef.current = telemetry.available ? telemetry : null;
+      setLivePositionTelemetry(hasLivePositionTelemetry(telemetry));
+      if (options.includeRendering !== false) {
+        setRenderingTelemetry(renderingTelemetryFromPlayerState(telemetry));
+      }
+      const observed = reconcileUpnpPlaybackObservation(snapshotRef.current, telemetry);
+      if (observed) applyObserved(observed);
+    } catch {
+      if (generation !== generationRef.current || revision < revisionRef.current) return;
+      const previous = latestUpnpTelemetryRef.current;
+      if (previous && Date.now() - previous.sampledAt > UPNP_TELEMETRY_TTL_MS) {
+        latestUpnpTelemetryRef.current = null;
+        setLivePositionTelemetry(false);
+        setRenderingTelemetry(null);
+      }
+    } finally {
+      if (generation === generationRef.current) upnpPollActiveRef.current = false;
+    }
+  }, [applyObserved, connected, target]);
+
+  const refreshSystemPlayback = useCallback(async () => {
+    if (!connected || !target.host || document.visibilityState !== "visible") return;
+    const incoming = await readSystemPlayback(target);
+    if (!incoming) return;
+    const current = snapshotRef.current;
+    if (current && incoming.sampledAt + 1_000 < current.sampledAt && incoming.itemId !== current.itemId) return;
+    applyObserved(incoming);
+  }, [applyObserved, connected, target]);
 
   const sendCommand = useCallback((command: PlaybackCommand): Promise<void> => {
     const generation = generationRef.current;
+    const endpointKey = activeEndpointKey;
     const run = async () => {
-      if (generation !== generationRef.current) throw new Error("Playback target changed.");
+      if (!playbackTargetIsCurrent(generation, endpointKey)) throw new Error("Playback target changed.");
       const response = await appFetch("/api/playback", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ target, command }),
       });
       if (!response.ok) throw await responseError(response, "Playback command failed.");
-      if (generation !== generationRef.current) throw new Error("Playback target changed.");
+      if (!playbackTargetIsCurrent(generation, endpointKey)) throw new Error("Playback target changed.");
     };
     const result = commandTailRef.current.then(run, run);
     commandTailRef.current = result.then(() => undefined, () => undefined);
     return result;
-  }, [target]);
+  }, [activeEndpointKey, playbackTargetIsCurrent, target]);
 
   const applyOptimisticCommand = useCallback(async (
     command: PlaybackCommand,
@@ -324,6 +509,10 @@ export function PlaybackProvider({
     successStatus: string,
   ) => {
     const commandGeneration = generationRef.current;
+    const commandEndpointKey = activeEndpointKey;
+    if (!playbackTargetIsCurrent(commandGeneration, commandEndpointKey)) {
+      throw new Error("Playback target changed.");
+    }
     const revision = ++revisionRef.current;
     pendingCommandsRef.current += 1;
     setPendingCommands(pendingCommandsRef.current);
@@ -334,11 +523,15 @@ export function PlaybackProvider({
     conflictRef.current = null;
     try {
       await sendCommand(command);
+      if (!playbackTargetIsCurrent(commandGeneration, commandEndpointKey)) {
+        throw new Error("Playback target changed.");
+      }
       confirmedRef.current = desired;
       if (revision === revisionRef.current) {
         holdConflictsUntilRef.current = Date.now() + OBSERVATION_HOLD_MS;
         onStatus(successStatus);
         scheduleRefresh(refreshNowPlaying);
+        scheduleRefresh(refreshUpnpPlayerState);
       }
     } catch (reason) {
       if (revision === revisionRef.current) {
@@ -358,18 +551,99 @@ export function PlaybackProvider({
         setPendingCommands(pendingCommandsRef.current);
       }
     }
-  }, [onStatus, refreshNowPlaying, scheduleRefresh, sendCommand, setSnapshot]);
+  }, [
+    activeEndpointKey,
+    onStatus,
+    playbackTargetIsCurrent,
+    refreshNowPlaying,
+    refreshUpnpPlayerState,
+    scheduleRefresh,
+    sendCommand,
+    setSnapshot,
+  ]);
 
-  const volume = useCallback(async (action: "volumeDown" | "mute" | "volumeUp") => {
+  useEffect(() => {
+    if (!rolloverActionRevision) return;
+    const action = rolloverActionRef.current;
+    rolloverActionRef.current = null;
+    if (!action) return;
+    if (action.kind === "stop") {
+      void applyOptimisticCommand(
+        { action: "stop" },
+        {
+          snapshot: stoppedSnapshot(),
+          ownsIdentity: true,
+          ownedItemId: "",
+          context: action.context,
+        },
+        "End of selection — playback stopped",
+      ).catch(() => undefined);
+      return;
+    }
+    void applyOptimisticCommand(
+      {
+        action: "play",
+        itemId: action.track.itemId,
+        ...(action.track.playbackIndex !== undefined ? { index: action.track.playbackIndex } : {}),
+      },
+      {
+        snapshot: snapshotForTrack(action.track),
+        ownsIdentity: true,
+        ownedItemId: action.track.itemId,
+        context: action.context,
+      },
+      `Continuing with ${action.track.metadata.title || "the next track"}`,
+    ).catch(() => undefined);
+  }, [applyOptimisticCommand, rolloverActionRevision]);
+
+  const setRenderingValue = useCallback(async (value: { volume: number } | { muted: boolean }) => {
     if (!volumeControlEnabled) throw new Error("Volume control is not available for this Olive model.");
     const commandGeneration = generationRef.current;
+    const commandEndpointKey = activeEndpointKey;
+    if (!playbackTargetIsCurrent(commandGeneration, commandEndpointKey)) {
+      throw new Error("Playback target changed.");
+    }
     pendingCommandsRef.current += 1;
     setPendingCommands(pendingCommandsRef.current);
     try {
-      await sendCommand({ action });
-      onStatus(action === "volumeDown" ? "Volume lowered" : action === "volumeUp" ? "Volume raised" : "Mute toggled");
+      const response = await appFetch("/api/upnp/volume", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ target, ...value }),
+      });
+      if (!playbackTargetIsCurrent(commandGeneration, commandEndpointKey)) {
+        throw new Error("Playback target changed.");
+      }
+      if (!response.ok) {
+        const error = await responseError(response, "Volume command failed.");
+        if (!playbackTargetIsCurrent(commandGeneration, commandEndpointKey)) {
+          throw new Error("Playback target changed.");
+        }
+        throw error;
+      }
+      const confirmed = await response.json() as { sampledAt?: number; volume?: number; muted?: boolean };
+      if (!playbackTargetIsCurrent(commandGeneration, commandEndpointKey)) {
+        throw new Error("Playback target changed.");
+      }
+      if (
+        !Number.isFinite(confirmed.volume)
+        || confirmed.volume! < 0
+        || confirmed.volume! > 100
+        || typeof confirmed.muted !== "boolean"
+      ) {
+        throw new Error("The Olive did not confirm its volume state.");
+      }
+      setRenderingTelemetry({
+        volumePercent: confirmed.volume!,
+        muted: confirmed.muted,
+        sampledAt: Number.isFinite(confirmed.sampledAt) ? confirmed.sampledAt! : Date.now(),
+      });
+      onStatus("Olive volume updated");
     } catch (reason) {
-      if (commandGeneration === generationRef.current) onStatus(reason instanceof Error ? reason.message : "Volume command failed.");
+      if (playbackTargetIsCurrent(commandGeneration, commandEndpointKey)) {
+        onStatus(reason instanceof Error ? reason.message : "Volume command failed.");
+        void refreshUpnpPlayerState({ includeRendering: true, includeMedia: false });
+      }
       throw reason;
     } finally {
       if (commandGeneration === generationRef.current) {
@@ -377,7 +651,25 @@ export function PlaybackProvider({
         setPendingCommands(pendingCommandsRef.current);
       }
     }
-  }, [onStatus, sendCommand, volumeControlEnabled]);
+  }, [
+    activeEndpointKey,
+    onStatus,
+    playbackTargetIsCurrent,
+    refreshUpnpPlayerState,
+    target,
+    volumeControlEnabled,
+  ]);
+
+  const setVolume = useCallback(async (level: number) => {
+    if (!Number.isInteger(level) || level < 0 || level > 100) {
+      throw new Error("Volume must be an integer between 0 and 100.");
+    }
+    await setRenderingValue({ volume: level });
+  }, [setRenderingValue]);
+
+  const setMuted = useCallback(async (muted: boolean) => {
+    await setRenderingValue({ muted });
+  }, [setRenderingValue]);
 
   const playPlaybackTrack = useCallback(async (track: PlaybackTrack, context: PlaybackTrack[]) => {
     const revisionBeforePlay = revisionRef.current + 1;
@@ -413,20 +705,76 @@ export function PlaybackProvider({
   }, [applyOptimisticCommand, hydrateTrack, setSnapshot]);
 
   const playTrack = useCallback(async (node: MaestroTreeNode, nodes: MaestroTreeNode[] = [node]) => {
-    const context = nodes.map((item) => playbackTrackFromNode(item, cachedMetadata(item.id)));
-    const track = context.find((item) => item.itemId === node.id) ?? playbackTrackFromNode(node, cachedMetadata(node.id));
+    const requestGeneration = generationRef.current;
+    const requestEndpointKey = activeEndpointKey;
+    if (!playbackTargetIsCurrent(requestGeneration, requestEndpointKey)) {
+      throw new Error("Playback target changed.");
+    }
+    const playableNode = await resolveMaestroPlaybackNode(target, node);
+    if (!playbackTargetIsCurrent(requestGeneration, requestEndpointKey)) {
+      throw new Error("Playback target changed.");
+    }
+    const playbackId = maestroPlaybackId(playableNode);
+    if (!playbackId || (isUpnpTreeNode(playableNode) && playableNode.userData.maestroId !== playbackId)) {
+      throw new Error("This UPnP track does not yet have a verified Maestro playback mapping.");
+    }
+    const canonicalPlayableNode = isUpnpTreeNode(playableNode)
+      ? { ...playableNode, id: playbackId }
+      : playableNode;
+    const contextNodes = nodes.map((item) => item === node ? canonicalPlayableNode : item);
+    const context = contextNodes.map((item) => playbackTrackFromNode(item, cachedMetadata(item.id)));
+    const track = context.find((item) => item.itemId === playbackId)
+      ?? playbackTrackFromNode(canonicalPlayableNode, cachedMetadata(playbackId));
+    if (!playbackTargetIsCurrent(requestGeneration, requestEndpointKey)) {
+      throw new Error("Playback target changed.");
+    }
     await playPlaybackTrack(track, context);
-  }, [cachedMetadata, playPlaybackTrack]);
+    if (!playbackTargetIsCurrent(requestGeneration, requestEndpointKey)) {
+      throw new Error("Playback target changed.");
+    }
+  }, [activeEndpointKey, cachedMetadata, playbackTargetIsCurrent, playPlaybackTrack, target]);
 
   const playQueuedTrack = useCallback(async (queued: QueuedTrack) => {
+    const requestGeneration = generationRef.current;
+    const requestEndpointKey = activeEndpointKey;
+    if (!playbackTargetIsCurrent(requestGeneration, requestEndpointKey)) {
+      throw new Error("Playback target changed.");
+    }
     const currentQueue = queueRef.current;
-    const context = currentQueue.map((item) => queuedTrackAsPlaybackTrack(item, cachedMetadata(item.itemId)));
-    const track = context.find((item) => item.itemId === queued.itemId) ?? queuedTrackAsPlaybackTrack(queued, cachedMetadata(queued.itemId));
+    const playableNode = await resolveMaestroPlaybackNode(target, queuedTrackNode(queued));
+    if (!playbackTargetIsCurrent(requestGeneration, requestEndpointKey)) {
+      throw new Error("Playback target changed.");
+    }
+    const playbackId = maestroPlaybackId(playableNode);
+    if (!playbackId || (isUpnpTreeNode(playableNode) && playableNode.userData.maestroId !== playbackId)) {
+      throw new Error("This queued UPnP track does not yet have a verified Maestro playback mapping.");
+    }
+    const canonicalPlayableNode = isUpnpTreeNode(playableNode)
+      ? { ...playableNode, id: playbackId }
+      : playableNode;
+    const track = playbackTrackFromNode(canonicalPlayableNode, cachedMetadata(playbackId));
+    const context = currentQueue.map((item) => item.queueId === queued.queueId
+      ? track
+      : queuedTrackAsPlaybackTrack(item, cachedMetadata(item.itemId)));
+    if (!playbackTargetIsCurrent(requestGeneration, requestEndpointKey)) {
+      throw new Error("Playback target changed.");
+    }
     await playPlaybackTrack(track, context);
+    if (!playbackTargetIsCurrent(requestGeneration, requestEndpointKey)) {
+      throw new Error("Playback target changed.");
+    }
     setQueue(queueRef.current.filter((item) => item.queueId !== queued.queueId));
-  }, [cachedMetadata, playPlaybackTrack, setQueue]);
+  }, [
+    activeEndpointKey,
+    cachedMetadata,
+    playbackTargetIsCurrent,
+    playPlaybackTrack,
+    setQueue,
+    target,
+  ]);
 
   const seek = useCallback(async (positionSeconds: number) => {
+    if (!seekControlEnabled) throw new Error("Seeking is not verified for this Olive.");
     if (!Number.isFinite(positionSeconds) || positionSeconds < 0) throw new Error("Seek position must be a non-negative number.");
     const current = snapshotRef.current;
     if (!current?.itemId) throw new Error("Choose a song before seeking.");
@@ -440,28 +788,51 @@ export function PlaybackProvider({
       { snapshot: desiredSnapshot, ownsIdentity: ownsIdentityRef.current, ownedItemId: ownedItemIdRef.current, context: contextRef.current },
       `Jumped to ${Math.floor(positionSeconds / 60)}:${String(Math.floor(positionSeconds % 60)).padStart(2, "0")}`,
     );
-  }, [applyOptimisticCommand]);
+    await refreshUpnpPlayerState();
+  }, [applyOptimisticCommand, refreshUpnpPlayerState, seekControlEnabled]);
 
   const skipTrack = useCallback(async (direction: "previous" | "next") => {
     const currentItemId = snapshotRef.current?.itemId ?? "";
     const adjacent = adjacentTrack(contextRef.current, currentItemId, direction);
     if (adjacent) {
       await applyOptimisticCommand(
-        { action: direction },
+        {
+          action: "play",
+          itemId: adjacent.itemId,
+          ...(adjacent.playbackIndex !== undefined ? { index: adjacent.playbackIndex } : {}),
+        },
         {
           snapshot: snapshotForTrack(adjacent),
           ownsIdentity: true,
           ownedItemId: adjacent.itemId,
           context: contextRef.current,
         },
-        `${direction === "next" ? "Next" : "Previous"} sent to server`,
+        `${direction === "next" ? "Playing next" : "Playing previous"}: ${adjacent.metadata.title || "track"}`,
       );
+      return;
+    }
+    if (isPlaybackContextBoundary(contextRef.current, currentItemId, direction)) {
+      if (direction === "next") {
+        await applyOptimisticCommand(
+          { action: "stop" },
+          {
+            snapshot: stoppedSnapshot(),
+            ownsIdentity: true,
+            ownedItemId: "",
+            context: contextRef.current,
+          },
+          "End of selection — playback stopped",
+        );
+      } else {
+        onStatus("Start of selection");
+      }
       return;
     }
     const desired: ConfirmedState = {
       snapshot: {
         itemId: "",
         metadata: null,
+        identitySource: "none",
         transportState: "playing",
         positionSeconds: null,
         durationSeconds: null,
@@ -472,7 +843,7 @@ export function PlaybackProvider({
       context: [],
     };
     await applyOptimisticCommand({ action: direction }, desired, `${direction === "next" ? "Next" : "Previous"} sent to server`);
-  }, [applyOptimisticCommand]);
+  }, [applyOptimisticCommand, onStatus]);
 
   const control = useCallback(async (action: "pause" | "stop" | "previous" | "next") => {
     if (action === "next" && queueRef.current[0]) {
@@ -533,13 +904,21 @@ export function PlaybackProvider({
     revisionRef.current += 1;
     commandTailRef.current = Promise.resolve();
     pollActiveRef.current = false;
+    upnpPollActiveRef.current = false;
+    upnpPollSequenceRef.current = 0;
     pendingCommandsRef.current = 0;
     setPendingCommands(0);
+    latestUpnpTelemetryRef.current = null;
+    setLivePositionTelemetry(false);
+    setRenderingTelemetry(isDemoTarget(target)
+      ? { volumePercent: 55, muted: false, sampledAt: Date.now() }
+      : null);
     ownsIdentityRef.current = false;
     ownedItemIdRef.current = "";
     contextRef.current = [];
     conflictRef.current = null;
     holdConflictsUntilRef.current = 0;
+    identityMissingUntilRef.current = 0;
     confirmedRef.current = { snapshot: null, ownsIdentity: false, ownedItemId: "", context: [] };
     setSnapshot(null);
     const incomingQueue = readQueue(target);
@@ -547,21 +926,41 @@ export function PlaybackProvider({
     setQueueState(incomingQueue);
     reconcileTimersRef.current.forEach(window.clearTimeout);
     reconcileTimersRef.current = [];
-    if (connected) void refreshNowPlaying();
-  }, [activeTargetKey, connected]);
+    if (connected) {
+      void refreshSystemPlayback();
+      void refreshUpnpPlayerState();
+      void refreshNowPlaying();
+    }
+  }, [activeEndpointKey, activeTargetKey, connected, refreshSystemPlayback]);
 
   useEffect(() => {
     if (!connected) return;
-    const poll = window.setInterval(() => void refreshNowPlaying(), 5_000);
-    const clock = window.setInterval(() => setTick(Date.now()), 1_000);
-    const handleVisibility = () => { if (document.visibilityState === "visible") void refreshNowPlaying(); };
+    const legacyPoll = window.setInterval(() => void refreshNowPlaying(), 3_000);
+    const systemPoll = window.setInterval(() => void refreshSystemPlayback(), 4_000);
+    const upnpPoll = window.setInterval(() => {
+      upnpPollSequenceRef.current += 1;
+      const includeSlowTelemetry = upnpPollSequenceRef.current % 4 === 0;
+      void refreshUpnpPlayerState({
+        includeRendering: includeSlowTelemetry,
+        includeMedia: includeSlowTelemetry,
+      });
+    }, 1_500);
+    const clock = window.setInterval(() => setTick(Date.now()), 500);
+    const handleVisibility = () => {
+      if (document.visibilityState !== "visible") return;
+      void refreshUpnpPlayerState();
+      void refreshNowPlaying();
+      void refreshSystemPlayback();
+    };
     document.addEventListener("visibilitychange", handleVisibility);
     return () => {
-      window.clearInterval(poll);
+      window.clearInterval(legacyPoll);
+      window.clearInterval(systemPoll);
+      window.clearInterval(upnpPoll);
       window.clearInterval(clock);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [connected, refreshNowPlaying]);
+  }, [connected, refreshNowPlaying, refreshSystemPlayback, refreshUpnpPlayerState]);
 
   useEffect(() => () => {
     reconcileTimersRef.current.forEach(window.clearTimeout);
@@ -606,19 +1005,33 @@ export function PlaybackProvider({
     nowPlaying,
     commandPending: pendingCommands > 0,
     volumeControlEnabled,
+    seekControlEnabled,
+    livePositionTelemetry,
+    renderingTelemetry,
     queue,
-  }), [connected, nowPlaying, pendingCommands, queue, target, volumeControlEnabled]);
+  }), [
+    connected,
+    livePositionTelemetry,
+    nowPlaying,
+    pendingCommands,
+    queue,
+    renderingTelemetry,
+    seekControlEnabled,
+    target,
+    volumeControlEnabled,
+  ]);
   const actionsValue = useMemo<PlaybackActionsValue>(() => ({
     playTrack,
     playQueuedTrack,
     control,
     seek,
-    volume,
+    setVolume,
+    setMuted,
     enqueue,
     moveQueueItem,
     removeQueueItem,
     clearQueue,
-  }), [clearQueue, control, enqueue, moveQueueItem, playQueuedTrack, playTrack, removeQueueItem, seek, volume]);
+  }), [clearQueue, control, enqueue, moveQueueItem, playQueuedTrack, playTrack, removeQueueItem, seek, setMuted, setVolume]);
 
   return <PlaybackActionsContext.Provider value={actionsValue}>
     <PlaybackStateContext.Provider value={stateValue}>{children}</PlaybackStateContext.Provider>

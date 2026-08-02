@@ -2,15 +2,36 @@ import { useEffect, useRef, useState } from "react";
 import type { MaestroTreeNode, OliveDeviceTarget } from "@olive-remote-lab/olive-client";
 import { artworkUrl } from "../artwork";
 import { appFetch } from "../nativeApi";
+import { deviceCacheNamespace, deviceRequestKey, type StableOliveTarget } from "../deviceIdentity";
+import { ARTWORK_PATH_STORAGE_KEY } from "../deviceStorageMigration";
+import { RetryingArtwork } from "./RetryingArtwork";
+import {
+  isUpnpTreeNode,
+  normalizeUpnpArtworkUri,
+  type UpnpCatalogPage,
+} from "../upnpCatalog";
 
-const ARTWORK_PATH_STORAGE_KEY = "olive-artwork-paths-v1";
 const MAX_STORED_PATHS = 2_000;
 const artworkPathCache = new Map<string, string>();
-const metadataRequests = new Map<string, Promise<string>>();
+const artworkRequests = new Map<string, Promise<string>>();
 const queue: Array<() => void> = [];
 let activeRequests = 0;
 let pathCacheLoaded = false;
 let persistTimer: ReturnType<typeof setTimeout> | undefined;
+
+export function artworkRequestIdentity(target: StableOliveTarget, itemId: string): string {
+  return `${deviceRequestKey(target)}:${itemId}`;
+}
+
+export function shouldApplyArtworkResult(
+  expectedRevision: number,
+  currentRevision: number,
+  expectedRequestIdentity: string,
+  currentRequestIdentity: string,
+): boolean {
+  return expectedRevision === currentRevision
+    && expectedRequestIdentity === currentRequestIdentity;
+}
 
 function loadPathCache(): void {
   if (pathCacheLoaded) return;
@@ -46,8 +67,14 @@ function rememberPath(key: string, path: string): void {
   persistPathCache();
 }
 
+function forgetPath(key: string): void {
+  loadPathCache();
+  artworkPathCache.delete(key);
+  persistPathCache();
+}
+
 function runQueue(): void {
-  while (activeRequests < 3 && queue.length) {
+  while (activeRequests < 2 && queue.length) {
     activeRequests += 1;
     queue.shift()?.();
   }
@@ -62,47 +89,122 @@ function scheduled<T>(task: () => Promise<T>): Promise<T> {
   });
 }
 
-async function itemArtworkPath(target: OliveDeviceTarget, itemId: string): Promise<string> {
-  const key = `${target.host}:${target.port}:${itemId}`;
-  loadPathCache();
-  if (artworkPathCache.has(key)) return artworkPathCache.get(key) ?? "";
-  const cached = metadataRequests.get(key);
-  if (cached) return cached;
-  let request: Promise<string>;
-  request = scheduled(async () => {
-    const response = await appFetch("/api/library/item-metadata", {
+function directArtworkPath(item: MaestroTreeNode): string {
+  const path = item.userData.albumart ?? item.userData.albumArt ?? item.userData.artwork
+    ?? item.userData.artworkPath ?? item.userData.cover ?? "";
+  return /artworknotfound\.gif(?:$|\?)/i.test(path) ? "" : path;
+}
+
+async function metadataArtworkPath(target: OliveDeviceTarget, itemId: string): Promise<string> {
+  const response = await appFetch("/api/library/item-metadata", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ target, itemId }),
+  });
+  if (!response.ok) return "";
+  const metadata = await response.json() as { artworkPath?: unknown } | null;
+  return typeof metadata?.artworkPath === "string" ? metadata.artworkPath : "";
+}
+
+async function firstTrackArtworkPath(target: OliveDeviceTarget, item: MaestroTreeNode): Promise<string> {
+  if (isUpnpTreeNode(item)) {
+    const response = await appFetch("/api/upnp/browse", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ target, itemId }),
+      body: JSON.stringify({
+        target,
+        objectId: item.userData.upnpId || item.id,
+        startingIndex: 0,
+        requestedCount: 8,
+      }),
     });
     if (!response.ok) return "";
-    const metadata = await response.json() as { artworkPath?: unknown } | null;
-    return typeof metadata?.artworkPath === "string" ? metadata.artworkPath : "";
-  }).then((path) => {
-    if (path) rememberPath(key, path);
-    return path;
-  }).catch(() => "").finally(() => {
-    if (metadataRequests.get(key) === request) metadataRequests.delete(key);
+    const page = await response.json() as UpnpCatalogPage;
+    return page.objects.map((child) =>
+      normalizeUpnpArtworkUri(target as StableOliveTarget, child.albumArtUri))
+      .find(Boolean) ?? "";
+  }
+  const response = await appFetch("/api/library/browse", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      target,
+      browse: { id: item.id, type: "compilation", startIndex: 0, index: 0 },
+    }),
   });
-  metadataRequests.set(key, request);
+  if (!response.ok) return "";
+  const tree = await response.json() as { items?: MaestroTreeNode[] } | null;
+  const children = Array.isArray(tree?.items) ? tree.items : [];
+  for (const child of children) {
+    const direct = directArtworkPath(child);
+    if (direct) return direct;
+  }
+  const firstTrack = children.find((child) => {
+    const type = child.userData.type?.toLowerCase();
+    return type === "track" || (type !== "album" && type !== "compilation" && child.childCount === 0);
+  });
+  return firstTrack?.id ? metadataArtworkPath(target, firstTrack.id) : "";
+}
+
+async function requestArtworkPath(target: OliveDeviceTarget, item: MaestroTreeNode): Promise<string> {
+  const type = item.userData.type?.toLowerCase() ?? "";
+  if (type === "album" || type === "compilation") return firstTrackArtworkPath(target, item);
+  if (["artist", "artists", "interpreter", "genre", "playlist", "albumname"].includes(type)) return "";
+  if (isUpnpTreeNode(item)) {
+    const maestroId = item.userData.maestroId?.trim();
+    return maestroId ? metadataArtworkPath(target, maestroId) : "";
+  }
+  return metadataArtworkPath(target, item.id);
+}
+
+async function itemArtworkPath(target: OliveDeviceTarget, item: MaestroTreeNode, force = false): Promise<string> {
+  const cacheKey = `${deviceCacheNamespace(target as StableOliveTarget)}:${item.id}`;
+  const requestKey = artworkRequestIdentity(target as StableOliveTarget, item.id);
+  loadPathCache();
+  if (!force && artworkPathCache.has(cacheKey)) return artworkPathCache.get(cacheKey) ?? "";
+  const cached = artworkRequests.get(requestKey);
+  if (cached) return cached;
+  let request: Promise<string>;
+  request = scheduled(() => requestArtworkPath(target, item)).catch(() => "").finally(() => {
+    if (artworkRequests.get(requestKey) === request) artworkRequests.delete(requestKey);
+  });
+  artworkRequests.set(requestKey, request);
   return request;
 }
 
 export function LibraryArtwork({ target, item, fallback = "♪" }: { target: OliveDeviceTarget; item: MaestroTreeNode; fallback?: string }) {
   const root = useRef<HTMLSpanElement>(null);
-  const directPath = item.userData.albumart ?? item.userData.albumArt ?? item.userData.artwork ?? item.userData.artworkPath ?? item.userData.cover ?? "";
+  const recoveryAttempted = useRef<string | null>(null);
+  const artworkRevision = useRef(0);
+  const directPath = directArtworkPath(item);
+  const targetNamespace = deviceCacheNamespace(target as StableOliveTarget);
+  const targetRequestKey = deviceRequestKey(target as StableOliveTarget);
+  const requestIdentity = artworkRequestIdentity(target as StableOliveTarget, item.id);
+  const requestIdentityRef = useRef(requestIdentity);
+  requestIdentityRef.current = requestIdentity;
   const [path, setPath] = useState(directPath);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
+    const revision = ++artworkRevision.current;
+    const expectedRequestIdentity = requestIdentity;
+    const cacheKey = `${targetNamespace}:${item.id}`;
+    recoveryAttempted.current = null;
     setPath(directPath);
     setFailed(false);
     const element = root.current;
     if (!element || !item.id || directPath) return;
     let active = true;
     const load = () => {
-      void itemArtworkPath(target, item.id).then((artworkPath) => {
-        if (active && artworkPath) setPath(artworkPath);
+      void itemArtworkPath(target, item).then((artworkPath) => {
+        if (!active || !artworkPath || !shouldApplyArtworkResult(
+          revision,
+          artworkRevision.current,
+          expectedRequestIdentity,
+          requestIdentityRef.current,
+        )) return;
+        rememberPath(cacheKey, artworkPath);
+        setPath(artworkPath);
       });
     };
     if (!("IntersectionObserver" in window)) { load(); return () => { active = false; }; }
@@ -111,11 +213,45 @@ export function LibraryArtwork({ target, item, fallback = "♪" }: { target: Oli
     }, { rootMargin: "600px" });
     observer.observe(element);
     return () => { active = false; observer.disconnect(); };
-  }, [target.host, target.port, item.id, directPath]);
+  }, [targetNamespace, targetRequestKey, item.id, directPath]);
 
   const source = artworkUrl(target, path);
+
+  function recoverArtwork() {
+    if (requestIdentityRef.current !== requestIdentity) return;
+    if (recoveryAttempted.current === requestIdentity || !item.id) {
+      setFailed(true);
+      return;
+    }
+    const revision = ++artworkRevision.current;
+    const expectedRequestIdentity = requestIdentity;
+    recoveryAttempted.current = expectedRequestIdentity;
+    const previousPath = path;
+    const key = `${targetNamespace}:${item.id}`;
+    forgetPath(key);
+    setPath("");
+    void itemArtworkPath(target, item, true).then((refreshedPath) => {
+      if (!shouldApplyArtworkResult(
+        revision,
+        artworkRevision.current,
+        expectedRequestIdentity,
+        requestIdentityRef.current,
+      )) return;
+      if (refreshedPath && refreshedPath !== previousPath) {
+        rememberPath(key, refreshedPath);
+        setFailed(false);
+        setPath(refreshedPath);
+      } else {
+        forgetPath(key);
+        setFailed(true);
+      }
+    });
+  }
+
   return <span ref={root} className={`library-icon artwork-tile ${source && !failed ? "has-artwork" : ""}`}>
-    {source && !failed ? <img src={source} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} /> : fallback}
+    {source && !failed
+      ? <RetryingArtwork src={source} alt="" loading="lazy" decoding="async" fallback={fallback} onExhausted={recoverArtwork} />
+      : fallback}
   </span>;
 }
 

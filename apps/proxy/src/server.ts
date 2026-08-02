@@ -1,11 +1,14 @@
 import express from "express";
 import {
   OliveCompatibilityClient,
+  OliveUpnpClient,
+  buildOliveUpnpSearchCriteria,
   type ExplorerRequest,
   type MaestroBrowseRequest,
   type OliveDeviceTarget,
   type PlaybackCommand,
   type LibrarySearchScope,
+  type UpnpServiceDescription,
   buildOliveUrl,
 } from "@olive-remote-lab/olive-client";
 import { discoverOliveDevices } from "./discovery.js";
@@ -15,7 +18,41 @@ import { assertLocalUrl } from "./security.js";
 
 const app = express();
 const port = Number(process.env.PROXY_PORT ?? 3001);
-const client = new OliveCompatibilityClient(new LocalHttpTransport());
+const transport = new LocalHttpTransport();
+const client = new OliveCompatibilityClient(transport);
+const upnpClient = new OliveUpnpClient(transport);
+const experimentalRequestsEnabled = process.env.OLIVE_ENABLE_EXPERIMENTAL_REQUESTS === "1";
+
+interface UpnpTarget extends OliveDeviceTarget {
+  services?: readonly UpnpServiceDescription[];
+  approvedServiceDeviceIds?: readonly string[];
+}
+
+function upnpService(
+  target: UpnpTarget,
+  family: "ContentDirectory" | "AVTransport" | "RenderingControl",
+): UpnpServiceDescription | null {
+  const service = target.services?.find((candidate) =>
+    new RegExp(`:service:${family}:\\d+$`, "i").test(candidate.serviceType)
+    && Boolean(candidate.controlUrl));
+  if (!service?.controlUrl) return null;
+  const approvedOwners = new Set((target.approvedServiceDeviceIds ?? [])
+    .map((value) => value.trim().toLowerCase()));
+  const owner = service.deviceUdn?.trim().toLowerCase() ?? "";
+  if (!owner || !approvedOwners.has(owner)) {
+    throw new Error(`${family} endpoint is not bound to an Olive-verified device descriptor.`);
+  }
+  const control = new URL(service.controlUrl);
+  if (control.hostname.toLowerCase() !== target.host.trim().toLowerCase()) {
+    throw new Error(`${family} endpoint does not belong to the selected Olive.`);
+  }
+  return service;
+}
+
+async function bestEffort<T>(operation: (() => Promise<T>) | null): Promise<T | null> {
+  if (!operation) return null;
+  try { return await operation(); } catch { return null; }
+}
 
 app.disable("x-powered-by");
 app.use(express.json({ limit: "256kb" }));
@@ -113,6 +150,12 @@ app.post("/api/now-playing", async (request, response) => {
 
 app.post("/api/playback", async (request, response) => {
   const { target, command } = request.body as { target: OliveDeviceTarget; command: PlaybackCommand };
+  if (command?.action === "seek") {
+    response.status(409).json({
+      error: "Seeking is quarantined because no Olive seek endpoint has been physically verified.",
+    });
+    return;
+  }
   try {
     const result = await client.controlPlayback(target, command);
     addLog({ method: "PLAYBACK", url: `${target.host}:${target.port}`, status: result.status, durationMs: result.durationMs, responsePreview: command.action });
@@ -133,7 +176,137 @@ app.post("/api/library/search", async (request, response) => {
   }
 });
 
+app.post("/api/upnp/catalog-status", async (request, response) => {
+  const target = request.body as UpnpTarget;
+  try {
+    const service = upnpService(target, "ContentDirectory");
+    if (!service) { response.json({ available: false, sampledAt: Date.now() }); return; }
+    const updateId = await upnpClient.getSystemUpdateId(service);
+    const search = await bestEffort(() => upnpClient.getSearchCapabilities(service));
+    const sort = await bestEffort(() => upnpClient.getSortCapabilities(service));
+    addLog({ method: "UPNP", url: service.controlUrl ?? target.host, status: 200, responsePreview: `ContentDirectory revision ${updateId}` });
+    response.json({
+      available: true,
+      sampledAt: Date.now(),
+      updateId,
+      searchCapabilities: search?.values ?? [],
+      sortCapabilities: sort?.values ?? [],
+    });
+  } catch (error) {
+    response.status(502).json({ error: error instanceof Error ? error.message : "UPnP catalog status failed." });
+  }
+});
+
+app.post("/api/upnp/browse", async (request, response) => {
+  const { target, objectId, startingIndex = 0, requestedCount = 64, browseFlag = "BrowseDirectChildren" } = request.body as {
+    target: UpnpTarget;
+    objectId: string;
+    startingIndex?: number;
+    requestedCount?: number;
+    browseFlag?: "BrowseMetadata" | "BrowseDirectChildren";
+  };
+  try {
+    const service = upnpService(target, "ContentDirectory");
+    if (!service) throw new Error("This Olive did not advertise ContentDirectory.");
+    const background = request.get("x-olive-request-priority")?.trim().toLowerCase() === "background";
+    const result = await upnpClient.browse(service, {
+      objectId,
+      startingIndex,
+      requestedCount,
+      browseFlag,
+      timeoutMs: background ? 12_000 : 5_000,
+    });
+    const { rawDidl: _rawDidl, ...catalog } = result;
+    addLog({ method: "UPNP", url: service.controlUrl ?? target.host, status: 200, responsePreview: `${result.numberReturned}/${result.totalMatches} catalog objects; metadata omitted` });
+    response.json({ ...catalog, objectId });
+  } catch (error) {
+    response.status(502).json({ error: error instanceof Error ? error.message : "UPnP browse failed." });
+  }
+});
+
+app.post("/api/upnp/search", async (request, response) => {
+  const { target, term, startingIndex = 0, requestedCount = 64 } = request.body as {
+    target: UpnpTarget;
+    term: string;
+    startingIndex?: number;
+    requestedCount?: number;
+  };
+  try {
+    const service = upnpService(target, "ContentDirectory");
+    if (!service) throw new Error("This Olive did not advertise ContentDirectory search.");
+    const capabilities = await upnpClient.getSearchCapabilities(service);
+    const result = await upnpClient.search(service, {
+      containerId: "0",
+      searchCriteria: buildOliveUpnpSearchCriteria(term, capabilities.values),
+      startingIndex,
+      requestedCount,
+    });
+    const { rawDidl: _rawDidl, ...catalog } = result;
+    addLog({ method: "UPNP", url: service.controlUrl ?? target.host, status: 200, responsePreview: `${result.numberReturned}/${result.totalMatches} search objects; query and metadata omitted` });
+    response.json({ ...catalog, objectId: "0" });
+  } catch (error) {
+    response.status(502).json({ error: error instanceof Error ? error.message : "UPnP search failed." });
+  }
+});
+
+app.post("/api/upnp/player-state", async (request, response) => {
+  const target = request.body as UpnpTarget & { includeRendering?: boolean; includeMedia?: boolean };
+  try {
+    const avTransport = upnpService(target, "AVTransport");
+    const rendering = upnpService(target, "RenderingControl");
+    if (!avTransport && !rendering) { response.json({ available: false, sampledAt: Date.now() }); return; }
+    const [position, transportInfo, volume, mute] = await Promise.all([
+      bestEffort(avTransport ? () => upnpClient.getPositionInfo(avTransport) : null),
+      bestEffort(avTransport ? () => upnpClient.getTransportInfo(avTransport) : null),
+      bestEffort(rendering && target.includeRendering !== false ? () => upnpClient.getVolume(rendering) : null),
+      bestEffort(rendering && target.includeRendering !== false ? () => upnpClient.getMute(rendering) : null),
+    ]);
+    const media = target.includeMedia === false || position?.trackMetadata.length
+      ? null
+      : await bestEffort(avTransport ? () => upnpClient.getMediaInfo(avTransport) : null);
+    response.json({
+      available: true,
+      sampledAt: Date.now(),
+      position,
+      transport: transportInfo,
+      media,
+      rendering: target.includeRendering === false
+        ? null
+        : { volume: volume?.value ?? null, muted: mute?.value ?? null },
+    });
+  } catch (error) {
+    response.status(502).json({ error: error instanceof Error ? error.message : "UPnP player state failed." });
+  }
+});
+
+app.post("/api/upnp/volume", async (request, response) => {
+  const input = request.body as { target: UpnpTarget; volume?: number; muted?: boolean };
+  try {
+    const service = upnpService(input.target, "RenderingControl");
+    if (!service) throw new Error("This Olive did not advertise RenderingControl.");
+    const setsVolume = Object.prototype.hasOwnProperty.call(input, "volume");
+    const setsMute = Object.prototype.hasOwnProperty.call(input, "muted");
+    if (setsVolume === setsMute) throw new Error("Choose exactly one absolute volume or mute value.");
+    if (setsVolume) {
+      const volume = await upnpClient.setVolume(service, Number(input.volume));
+      const mute = await upnpClient.getMute(service);
+      response.json({ sampledAt: Date.now(), volume: volume.value, muted: mute.value });
+      return;
+    }
+    if (typeof input.muted !== "boolean") throw new Error("Muted must be a boolean.");
+    const mute = await upnpClient.setMute(service, input.muted);
+    const volume = await upnpClient.getVolume(service);
+    response.json({ sampledAt: Date.now(), volume: volume.value, muted: mute.value });
+  } catch (error) {
+    response.status(502).json({ error: error instanceof Error ? error.message : "UPnP volume command failed." });
+  }
+});
+
 app.post("/api/request", async (request, response) => {
+  if (!experimentalRequestsEnabled) {
+    response.status(404).json({ error: "Experimental request tunneling is disabled." });
+    return;
+  }
   const input = request.body as ExplorerRequest;
   try {
     const result = await client.experimentalRequest(input);

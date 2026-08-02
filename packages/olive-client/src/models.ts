@@ -28,6 +28,7 @@ export interface OliveModelCapabilities {
   readonly maestroLibrary: CapabilityEvidence;
   readonly frontPanelApi: CapabilityEvidence;
   readonly playbackControl: CapabilityEvidence;
+  readonly seekControl: CapabilityEvidence;
   readonly notes: string;
 }
 
@@ -45,6 +46,7 @@ const unverified = (
   maestroLibrary: "unverified",
   frontPanelApi: "unverified",
   playbackControl: "unverified",
+  seekControl: "unverified",
   notes,
 });
 
@@ -74,6 +76,7 @@ export const OLIVE_MODEL_CAPABILITIES: readonly OliveModelCapabilities[] = [
     maestroLibrary: "verified",
     frontPanelApi: "verified",
     playbackControl: "shared-firmware-marker",
+    seekControl: "unverified",
     notes: "Verified against a real device on ports 80 and 8163.",
   },
   unverified("o5hd", "O5HD", "integrated", "hd", "Later-generation integrated system; evidence required."),

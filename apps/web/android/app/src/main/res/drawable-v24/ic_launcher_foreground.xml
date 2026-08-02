@@ -20,6 +20,6 @@
             android:strokeColor="#B7DC71"
             android:strokeWidth="18"
             android:strokeLineCap="round"
-            android:pathData="M359,206a58,58 0,0 1,58 58M359,163a101,101 0,0 1,101 101" />
+            android:pathData="M359,146a58,58 0,0 1,58 58M359,103a101,101 0,0 1,101 101" />
     </group>
 </vector>

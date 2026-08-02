@@ -47,6 +47,14 @@ For manual sideloading, copy the APK to the Android device and approve installat
 
 The repository can generate an unsigned validation bundle with `npm run android:bundle:unsigned`. The store command `npm run android:release` intentionally fails until a private upload key is configured.
 
+On the release Mac, the preferred setup keeps the upload-key password in the login Keychain under service `com.djfracking.oliveremotelab.play-upload` and uses the ignored `apps/web/android/olive-remote-upload.jks` keystore. Build that configuration with:
+
+```bash
+npm run android:release:keychain -w @olive-remote-lab/web
+```
+
+The existing `signing.properties` path remains available for a different release machine.
+
 Create the private configuration without committing it:
 
 ```bash

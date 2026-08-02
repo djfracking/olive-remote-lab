@@ -27,6 +27,7 @@ export interface MaestroTrackMetadata {
 export interface NowPlayingSnapshot {
   itemId: string;
   metadata: MaestroTrackMetadata | null;
+  identitySource: "device" | "command-fallback" | "none";
   transportState: "playing" | "paused" | "stopped" | "unknown";
   positionSeconds: number | null;
   durationSeconds: number | null;

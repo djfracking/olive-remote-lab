@@ -15,6 +15,7 @@ apps/web/ios/DerivedData/
 apps/web/ios/DerivedData-device/
 apps/web/ios/DeviceBuild/
 apps/web/ios/App/DerivedData-device/
+apps/web/DerivedData-iphone/
 apps/web/ios/SourcePackages/
 apps/web/ios/output/
 apps/web/ios/**/xcuserdata/
@@ -25,6 +26,11 @@ apps/web/ios/**/*.xcuserstate
 .firebase/
 .olap*
 olap_*.txt
+olap_*.map*
+.health_*.state
+.health_*.sh
+health_*.map*
+Resume * Health Scan.command
 public-site/downloads/*.apk
 public-site/downloads/*.idsig
 !public-site/downloads/olive-remote-android-tablet-1.0.0-beta.apk
